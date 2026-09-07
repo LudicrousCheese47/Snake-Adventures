@@ -308,24 +308,24 @@ int main(void) {
     Background();
     
     // --- Load Textures and Audios ---
-    headTexture = LoadTexture("Head2.png");
-    bodyTexture = LoadTexture("Body2.png");
-    jumpscareTexture = LoadTexture("jumpscare (2).png");
-    headAngryTexture = LoadTexture("Head_Angry.png");
-    headEatTexture = LoadTexture("Head_Eat.png");
-    bodyHurtTexture = LoadTexture("Body_Hurt.png");
-    energyTexture = LoadTexture("Energy.png");
-    hurtSound = LoadSound("Hurt2.wav");
-    eatSound = LoadSound("Eat.wav");
-    leftSound = LoadSound("Left2.wav");
-    rightSound = LoadSound("Right2.wav");
-    downSound = LoadSound("Down2.wav");
-    upSound = LoadSound("Up2.wav");
-    growSound = LoadSound("Grow2.wav");
-   // energyLevel = LoadSound("energy_level.wav");
-    levelUpSound = LoadSound("Level_Up2.wav");
-    jumpScareSound = LoadSound("jump.wav");
-    UI_Hover_Sfx = LoadSound("UI_Hover.wav");
+    headTexture = LoadTexture("Assets/Head2.png");
+    bodyTexture = LoadTexture("Assets/Body2.png");
+    jumpscareTexture = LoadTexture("Assets/jumpscare (2).png");
+    headAngryTexture = LoadTexture("Assets/Head_Angry.png");
+    headEatTexture = LoadTexture("Assets/Head_Eat.png");
+    bodyHurtTexture = LoadTexture("Assets/Body_Hurt.png");
+    energyTexture = LoadTexture("Assets/Energy.png");
+    hurtSound = LoadSound("Assets/Hurt2.wav");
+    eatSound = LoadSound("Assets/Eat.wav");
+    leftSound = LoadSound("Assets/Left2.wav");
+    rightSound = LoadSound("Assets/Right2.wav");
+    downSound = LoadSound("Assets/Down2.wav");
+    upSound = LoadSound("Assets/Up2.wav");
+    growSound = LoadSound("Assets/Grow2.wav");
+   // energyLevel = LoadSound("energyTexturenergy_level.wav");
+    levelUpSound = LoadSound("Assets/Level_Up2.wav");
+    jumpScareSound = LoadSound("Assets/jump.wav");
+    UI_Hover_Sfx = LoadSound("Assets/UI_Hover.wav");
     //backgroundSound = LoadMusicStream("Ahh Music.wav");
 
     
