@@ -26,6 +26,8 @@ struct Player {
     float visualX, visualY;
     
     float stomach; //How full the stomach is
+    
+    float mvSpd;//
 };
 
 struct Food {
@@ -57,6 +59,8 @@ struct Particle
     float maxLifetime;
 
     Color color;
+
+    bool noGravity; // Streaks fly straight (wind), not under gravity
 };
 
 struct Splat
@@ -130,6 +134,44 @@ struct TextLabel {
     float maxLifetime;
     bool visible;
     char text[256];
+    char *type;
+};
+
+// Effect/inventory frame: a small grid slot at the top of the screen that
+// holds a fruit icon + countdown timer. Can be a passive buff (Mult/Magnet)
+// or, later, a collectable the player clicks to trigger (clickable).
+struct EffectFrame {
+    bool active;
+    bool clickable;
+    bool hovering;
+
+    char *ability;
+
+    float scale;
+    float targetScale;
+
+    float timer;      // Seconds remaining
+    float maxTimer;   // Starting duration
+
+    int count;        // Stack count (collectables): number held
+
+    int r, g, b, a;        // Fruit icon color
+    int accentR, accentG, accentB, accentA; // Frame border color
+};
+
+// Vertical status bar (e.g. the player energy bar). Fill ratio is taken from
+// game state (player1.stomach) at render time; colors may be overridden by
+// active effect states (mult/sprint) in updateBars.
+struct Bar {
+    char *name;
+    int x, y;      // Top-left of the fill area
+    int w, h;      // Fill width + max fill height
+    int topR, topG, topB, topA; // Fill gradient top (resting)
+    int btmR, btmG, btmB, btmA; // Fill gradient bottom (resting)
+    int br, bg, bb, ba;         // Border/frame color
+    int layer;
+    bool visible;
+    bool active;
     char *type;
 };
 

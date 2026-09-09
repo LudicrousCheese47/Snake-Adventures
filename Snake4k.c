@@ -56,7 +56,46 @@ const float JUMPSCARE_DURATION = 0.25f;
 
 Texture2D jumpscareTexture;
 const float SCARED_DURATION = 4.0f;
-bool directDebounce = false;
+
+#define INPUT_QUEUE_SIZE 3
+char *inputQueue[INPUT_QUEUE_SIZE];
+int inputCount = 0;
+char *lastPressedDir = NULL;
+
+// Smoothed head rotation so the big head sweeps around the neck on turns
+float smoothHeadRotation = 0.0f;
+const float HEAD_TURN_RATE = 540.0f;
+
+bool isReverseDirection(char *a, char *b)
+{
+    return (strcmp(a, "up") == 0 && strcmp(b, "down") == 0) ||
+           (strcmp(a, "down") == 0 && strcmp(b, "up") == 0) ||
+           (strcmp(a, "left") == 0 && strcmp(b, "right") == 0) ||
+           (strcmp(a, "right") == 0 && strcmp(b, "left") == 0);
+}
+
+void queueDirection(char *dir, Sound sfx, bool playSfx)
+{
+    if (inputCount >= INPUT_QUEUE_SIZE)
+        return;
+
+    // Compare against the last direction that will actually be applied
+    char *last = (inputCount > 0) ? inputQueue[inputCount - 1] : direction;
+
+    // Ignore repeats and reversals
+    if (strcmp(dir, last) == 0 || isReverseDirection(dir, last))
+        return;
+
+    inputQueue[inputCount++] = dir;
+    if (playSfx)
+        PlaySound(sfx);
+}
+
+void clearInputQueue(void)
+{
+    inputCount = 0;
+    lastPressedDir = NULL;
+}
 
 struct Player player1 = {
     0, 0, PLAYER_SIZE,
@@ -64,11 +103,12 @@ struct Player player1 = {
     PLAYER_H_DEFAULT_R, PLAYER_H_DEFAULT_G, PLAYER_H_DEFAULT_B, PLAYER_H_DEFAULT_A, 
     220, 220,
     220.0f, 220.0f,
-    0
+    0,
+    10.0f
 };
 
 struct Food powerUps[] = {
-    {"apple",       0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 5.00, true, "Fruit",
+    {"apple",       0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 10.00, true, "Fruit",
     "A delicious apple, grants 3 energy"},
     {"purple grape",       0, 0, (2+PLAYER_SIZE)/2,      150, 0, 255, 255,  0.8, 100.00, true, "Fruit",
     "A juicy grape, grants 0.8 energy"},
@@ -85,7 +125,17 @@ struct Food powerUps[] = {
     {"posion apple",0, 0, (8+PLAYER_SIZE)/2,      105, 0, 0, 255,     4, 10.00, true, "Poison",
     "A poison apple will cause 4 snake segments to die slowly, do NOT eat it"},
     {"ghost apple", 0, 0, (0.5+PLAYER_SIZE)/2,      100, 100, 100, 20,  -1, 1.00, true, "Ghost", 
-    "This ghost apple is haunted by a entity that will scare the ever living segment off of the snake, and then the snake will go crazy. Do the snake a favor by NOT eat this"}
+    "This ghost apple is haunted by a entity that will scare the ever living segment off of the snake, and then the snake will go crazy. Do the snake a favor by NOT eat this"},
+    {"apple of greed", 0, 0, (10+PLAYER_SIZE)/2,    255, 0, 0, 255,   2, 0.85, true, "Mult",
+    "This apple grants an energy multiplier equal to its own energy"},
+    {"apple of magnetism", 0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 8.00, true, "Magnet",
+    "This apple magnetises nearby fruits towards the snake"},
+    {"apple of healing", 0, 0, (8+PLAYER_SIZE)/2,      0, 255, 150, 255,    1, 2.00, true, "Heal",
+    "A neon holy apple. Click its icon to cure poison"},
+    {"holy banana", 0, 0, (3+PLAYER_SIZE)/2,   255, 220, 60, 255,  1, 0.50, true, "Ward",
+    "A blessed banana. Saves the snake from death once. When it saves you from a crash, the snake reverses its tracks"},
+    {"giant grape",     0, 0, (16+PLAYER_SIZE)/2,      150, 0, 255, 255,   2, 0.30, true, "Giant",
+    "A colossal grape. Turns the snake giant, sucking fruits right into its maw"}
 };
 
 struct Food foods[FRUIT_COUNT] = { 0 };
@@ -97,6 +147,8 @@ struct Particle particles[MAX_PARTICLES] = { 0 };
 struct Splat splats[MAX_SPLATS] = { 0 };
 
 struct TextLabel tempLabels[MAX_UI] = { 0 };
+
+struct EffectFrame effectFrames[MAX_EFFECT_FRAMES] = { 0 };
 
 // UI Init
 
@@ -202,7 +254,22 @@ struct TextLabel labels[MAX_UI] = {
     },
 };
 
-//UI Init
+// UI Init
+
+struct Bar bars[MAX_UI] = {
+    {
+        "energy",
+        ENERGY_BAR_X, ENERGY_BAR_Y,
+        ENERGY_BAR_WIDTH, ENERGY_BAR_MAX_HEIGHT,
+        0, 25, 255, 255,  // fill gradient top (resting blue)
+        0, 0, 255, 255,   // fill gradient bottom
+        0, 0, 255, 255,   // border
+        0,                // layer
+        true,             // visible
+        true,             // active
+        "stats"           // type
+    }
+};
 
 void resetGame(void) {
     player1.length = 0;
@@ -220,6 +287,21 @@ void resetGame(void) {
     scaredTimer = 0.0f;
     poisonTick = 4;
     poisoned = false;
+    food_mult = 1.0f;
+    mult_active = false;
+    multTimer = 0.0f;
+    magnet_active = false;
+    magnetTimer = 0.0f;
+    holy_active = false;
+    holyTimer = 0.0f;
+    ward_active = false;
+    wardTimer = 0.0f;
+    warp_active = false;
+    warpTimer = 0.0f;
+    giant_active = false;
+    giantTimer = 0.0f;
+    clearEffectFrames();
+    clearInputQueue();
     player1.r = PLAYER_H_DEFAULT_R;
     player1.g = PLAYER_H_DEFAULT_G;
     player1.b = PLAYER_H_DEFAULT_B;
@@ -263,6 +345,9 @@ void renderBackground(void) {
     bool swapColors = false;
     Color color1 = getRandomBoardColor();
     Color color2 = darken(color1);
+
+    boardColor = color1;
+    boardColorDark = color2;
     for (int i = 0; i < sqaures; i++) {
         if (x >= SCREEN_WIDTH-UI_BORDER_OFFSET) {
             x = UI_BORDER_OFFSET; 
@@ -326,6 +411,7 @@ int main(void) {
     levelUpSound = LoadSound("Assets/Level_Up2.wav");
     jumpScareSound = LoadSound("Assets/jump.wav");
     UI_Hover_Sfx = LoadSound("Assets/UI_Hover.wav");
+    mult_sound = LoadSound("Assets/multi.wav");
     //backgroundSound = LoadMusicStream("Ahh Music.wav");
 
     
@@ -337,37 +423,29 @@ int main(void) {
     //UI Assign
 
     double moveTimer = 0.0;
-    double moveDelay = 0.10; // Lower number = faster speed
+    double moveDelay = 1.0 / (double)player1.mvSpd; // Seconds per tile, from snakeSpeed
     
     PlayMusicStream(backgroundSound);
     
-    char *prevDir = "";
-
     while (!WindowShouldClose() && !quitRequested) {
+        moveDelay = 1.0 / (double)player1.mvSpd; // Recompute each frame so sprint changes speed live
         if (!scared) {
-            if (IsKeyPressed(KEY_S) && strcmp(direction, "up") != 0 && directDebounce == false) {
-                directDebounce = true;
-                direction = "down";
-                if (strcmp(direction, prevDir) != 0) PlaySound(downSound);
-                prevDir = direction;
-            }
-            if (IsKeyPressed(KEY_W) && strcmp(direction, "down") != 0 && directDebounce == false) {
-                directDebounce = true;
-                direction = "up";
-                if (strcmp(direction, prevDir) != 0) PlaySound(upSound);
-                prevDir = direction;
-            }
-            if (IsKeyPressed(KEY_D) && strcmp(direction, "left") != 0 && directDebounce == false) { 
-                directDebounce = true;
-                direction = "right";
-                if (strcmp(direction, prevDir) != 0) PlaySound(rightSound);
-                prevDir = direction;
-            }
-            if (IsKeyPressed(KEY_A) && strcmp(direction, "right") != 0 && directDebounce == false) { 
-                directDebounce = true;
-                direction = "left";
-                if (strcmp(direction, prevDir) != 0) PlaySound(leftSound);
-                prevDir = direction;
+            if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) { lastPressedDir = "down";  queueDirection("down", downSound, true); }
+            if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { lastPressedDir = "up";    queueDirection("up", upSound, true); }
+            if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)){ lastPressedDir = "right"; queueDirection("right", rightSound, true); }
+            if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT)) { lastPressedDir = "left";  queueDirection("left", leftSound, true); }
+            if (game == true && !paused) {
+                // Hold-to-move: keep re-asserting the held direction (silent) so the
+                // snake keeps turning toward it while the key stays down. Only counts
+                // while it is STILL the player's most recent direction press — any
+                // newer tap disarms the hold so it can't yank control back.
+                char *heldDir = NULL;
+                if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) heldDir = "up";
+                else if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) heldDir = "down";
+                else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) heldDir = "right";
+                else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) heldDir = "left";
+                if (heldDir != NULL && lastPressedDir != NULL && strcmp(heldDir, lastPressedDir) == 0)
+                    queueDirection(heldDir, (Sound){0}, false);
             }
             if(IsKeyPressed(KEY_ESCAPE)) {
                 paused = !paused;
@@ -380,13 +458,28 @@ int main(void) {
                     hideUI("main");
                 }
             }
-
+        if (IsKeyDown(KEY_LEFT_SHIFT)) {
+                if (game == true && !paused && player1.stomach > 0.0f) {
+                    player1.mvSpd = 15.0f;
+                    player1.stomach -= 2.0f * GetFrameTime(); // 2 energy/sec, frame-rate independent
+                    sprint_active = true;
+                } else {
+                    player1.mvSpd = 10.0f;
+                    sprint_active = false;
+                }
+            } else {
+                player1.mvSpd = 10.0f;
+                sprint_active = false;
+            }
         }
 
         if (game == true && !paused) {
             UpdateMusicStream(backgroundSound); 
+            onMultiplier();
+            onMagnet();
+            onGiant();
             moveTimer += GetFrameTime();
-            if (moveTimer >= moveDelay) {
+            if (moveTimer >= moveDelay && !warp_active) {
                 moveTimer -= moveDelay;
                 if (scared) {
                     int randomDirection = GetRandomValue(0, 3);
@@ -417,6 +510,15 @@ int main(void) {
                         direction = "left";
                     }
                 }
+
+                // Apply the next buffered turn (one per move tick)
+                if (!scared && inputCount > 0)
+                {
+                    direction = inputQueue[0];
+                    for (int i = 0; i < inputCount - 1; i++)
+                        inputQueue[i] = inputQueue[i + 1];
+                    inputCount--;
+                }
                 
                 int prevX = player1.x;
                 int prevY = player1.y;
@@ -440,7 +542,6 @@ int main(void) {
                 else if (strcmp(direction, "up") == 0) player1.y -= player1.size;
                 else if (strcmp(direction, "right") == 0) player1.x += player1.size;
                 else if (strcmp(direction, "left") == 0) player1.x -= player1.size;
-                directDebounce = false;
                 isEatingFood();
                 isTouchingEdge();
                 checkSelfCollision();
@@ -461,6 +562,9 @@ int main(void) {
 
         float headDrawY = player1.visualY +
                           (player1.y - player1.visualY) * t;
+
+        headDrawX += warpOffsetX();
+        headDrawY += warpOffsetY();
                           
         float screenShakeX = 0.0f;
         float screenShakeY = 0.0f;
@@ -473,9 +577,23 @@ int main(void) {
         whilePoisoned();
         updateScaredMode();
         updateParticles();
+        updateGroundParticles();
+        updateGreedAura();
+        updateMagnetEffects();
+        updateHealAura();
+        updateHolyGlow();
+        updateWardAura();
+        updateWardShield();
+        updateWarp();
+        updateGiantSuck();
+        updateGiantAura();
+        updateHangryEffect();
+        updateEnergyBarSparkles();
+        updateSprintEffects();
         updateSplats();
         updateJumpscare();
         updateEnergyPopups();
+        updateEffectFrames();
         updateBodyRipple();
         //updateTempLabels();
         BeginDrawing();
@@ -511,13 +629,59 @@ int main(void) {
             if (game == true) {
                 renderSplats();
                 renderFoods();
-                renderPlayerBodies(t);
+                renderGroundParticles();
+                renderHolyAura(headDrawX, headDrawY);
+                renderHangryAura(headDrawX, headDrawY);
+                renderWardShield(headDrawX, headDrawY);
+                renderGiantAura(headDrawX, headDrawY);
+                renderPlayerBodies(t, headDrawX, headDrawY);
                 
-                float headRotation = 0.0f;
-                if (strcmp(direction, "right") == 0) headRotation = 0.0f;
-                else if (strcmp(direction, "down") == 0) headRotation = 90.0f;
-                else if (strcmp(direction, "left") == 0) headRotation = 180.0f;
-                else if (strcmp(direction, "up") == 0) headRotation = 270.0f;
+                // Aim the head along the real neck (head toward body[0]) so the back
+                // of the sprite always lands on the body, even mid-corner.
+                float targetRotation = 0.0f;
+
+                bool haveNeck = player1.length >= 2;
+
+                if (haveNeck)
+                {
+                    float body0DrawX = bodies[0].visualX +
+                        (bodies[0].x - bodies[0].visualX) * t +
+                        warpOffsetX();
+
+                    float body0DrawY = bodies[0].visualY +
+                        (bodies[0].y - bodies[0].visualY) * t +
+                        warpOffsetY();
+
+                    float neckDX = (headDrawX - body0DrawX);
+                    float neckDY = (headDrawY - body0DrawY);
+
+                    if (neckDX * neckDX + neckDY * neckDY > 1.0f)
+                        targetRotation = atan2f(neckDY, neckDX) * RAD2DEG;
+                    else
+                        haveNeck = false;
+                }
+
+                if (!haveNeck)
+                {
+                    if (strcmp(direction, "right") == 0) targetRotation = 0.0f;
+                    else if (strcmp(direction, "down") == 0) targetRotation = 90.0f;
+                    else if (strcmp(direction, "left") == 0) targetRotation = 180.0f;
+                    else if (strcmp(direction, "up") == 0) targetRotation = 270.0f;
+                }
+
+                // Turn smoothly, always taking the shortest arc
+                float rotDelta = targetRotation - smoothHeadRotation;
+                while (rotDelta > 180.0f) rotDelta -= 360.0f;
+                while (rotDelta < -180.0f) rotDelta += 360.0f;
+
+                float rotStep = HEAD_TURN_RATE * GetFrameTime();
+
+                if (fabsf(rotDelta) <= rotStep)
+                    smoothHeadRotation = targetRotation;
+                else
+                    smoothHeadRotation += copysignf(rotStep, rotDelta);
+
+                float headRotation = smoothHeadRotation;
 
                // Rectangle playerRectangle = { headDrawX, headDrawY, player1.size, player1.size };
                 
@@ -539,23 +703,36 @@ int main(void) {
                     (unsigned char)player1.a
                 };
 
+                if (mult_active)
+                    headColor = hangryTint(headColor);
+                else if (giant_active)
+                    headColor = giantTint(headColor);
+
+                // Hangry! The greed buff puts the snake in a foul mood
+                Texture2D activeHeadTexture =
+                    mult_active ? headAngryTexture : headTexture;
+
+                // Bigger mouth while giant — it devours a wider footprint
+                float headVisualSize =
+                    giant_active ? player1.size * GIANT_MOUTH_SCALE : player1.size;
+
                 DrawTexturePro(
-                    headTexture,
+                    activeHeadTexture,
                     (Rectangle){
                         0,
                         0,
-                        (float)headTexture.width,
-                        (float)headTexture.height
+                        (float)activeHeadTexture.width,
+                        (float)activeHeadTexture.height
                     },
                     (Rectangle){
                         headDrawX + player1.size / 2.0f,
                         headDrawY + player1.size / 2.0f,
-                        player1.size,
-                        player1.size
+                        headVisualSize,
+                        headVisualSize
                     },
                     (Vector2){
-                        player1.size / 2.0f,
-                        player1.size / 2.0f
+                        headVisualSize / 2.0f,
+                        headVisualSize / 2.0f
                     },
                     headRotation,
                     headColor
@@ -563,6 +740,7 @@ int main(void) {
                 
                 renderEye(headDrawX, headDrawY);
                 renderParticles();
+                renderEffectFrames();
                 updateUI();
                 renderTempLabels();
                 int mX = GetMouseX();
@@ -592,51 +770,6 @@ int main(void) {
                 
                 //DrawText(TextFormat("SCORE: %d", score), 0, 0, UI_BORDER_OFFSET-2, GREEN);
                // DrawText(TextFormat("LEVEL: %d", level), UI_BORDER_OFFSET*2+50, 0, UI_BORDER_OFFSET-2, WHITE);
-                DrawTextureEx(
-                    energyTexture,
-                    //(Rectangle){ 0, SCREEN_HEIGHT/2, energyTexture.width, energyTexture.height },
-                    (Vector2){ 0, SCREEN_HEIGHT/2-400 }, 
-                    0.0f,
-                    0.2f,
-                    WHITE
-                );
-                float barX = 5.0f;
-                float barY = SCREEN_HEIGHT / 2.0f - 400.0f;
-                float barWidth = 10.0f;
-                float maxHeight = 180.0f;
-                DrawRectangle(
-                    (int)barX - 2,
-                    (int)barY - 2,
-                    (int)barWidth + 4,
-                    (int)maxHeight + 4,
-                    (Color){0, 0, 255, 30}
-                );
-
-                DrawRectangle(
-                    (int)barX,
-                    (int)barY,
-                    (int)barWidth,
-                    (int)maxHeight,
-                    (Color){0, 0, 0, 80}
-                );
-
-                float barHeight = player1.stomach * 20.0f;
-
-                if (barHeight > maxHeight) {
-                    barHeight = maxHeight;
-                }
-                
-                if (barHeight > 0.0f)
-                {
-                    DrawRectangleGradientV(
-                        (int)barX,
-                        (int)(barY + maxHeight - barHeight),
-                        (int)barWidth,
-                        (int)barHeight,
-                        (Color){0, 255, 255, 255},
-                        (Color){0, 0, 255, 255}
-                    );
-                }
             } else {
                 DrawText("GAME OVER", SCREEN_WIDTH/2 - MeasureText("GAME OVER", 30)/2, SCREEN_HEIGHT/2 - 40, 30, RED);
                 DrawText(TextFormat("FINAL SCORE: %d", score), SCREEN_WIDTH/2 - MeasureText(TextFormat("FINAL SCORE: %d", score), 20)/2, SCREEN_HEIGHT/2, 20, WHITE);
@@ -709,6 +842,7 @@ int main(void) {
     UnloadSound(energyLevel);
     UnloadSound(levelUpSound);
     UnloadSound(UI_Hover_Sfx);
+    UnloadSound(mult_sound);
     UnloadMusicStream(backgroundSound);
     CloseAudioDevice();
     CloseWindow();
