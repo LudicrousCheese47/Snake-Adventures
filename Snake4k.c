@@ -108,39 +108,43 @@ struct Player player1 = {
 };
 
 struct Food powerUps[] = {
-    {"apple",       0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 10.00, true, "Fruit",
+    {"apple",       0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 12.00, true, "Fruit", 0,
     "A delicious apple, grants 3 energy"},
-    {"purple grape",       0, 0, (2+PLAYER_SIZE)/2,      150, 0, 255, 255,  0.8, 100.00, true, "Fruit",
-    "A juicy grape, grants 0.8 energy"},
-    {"green grape",         0, 0, (2+PLAYER_SIZE)/2,      0, 135, 20, 255,   1.5, 75.00, true, "Fruit",
-    "A sour grape, grants 1.5 energy, because sour grapes are better than purple grapes."},
-    {"blueberry",           0, 0, (1+PLAYER_SIZE)/2,      0, 35, 255, 255,   0.4, 90.00, true, "Fruit",
-    "A blueberry, grants 0.4 energy"},
-    {"water melon", 0, 0, (12+PLAYER_SIZE)/2,     0, 185, 0, 255,   5, 2.00, true, "Fruit",
-    "A water melon, grants 5 energy"},
-    {"cheese",      0, 0, (4+PLAYER_SIZE)/2,      200, 200, 0, 255,  2, 20.00, true, "Fruit",
-    "Cheesy cheese, grants 2 energy"},
-    {"orange",      0, 0, (8+PLAYER_SIZE)/2,      255, 150, 0, 255,    3, 5.00, true, "Fruit",
-    "A zesty sour orange, grants 3 energy"},
-    {"posion apple",0, 0, (8+PLAYER_SIZE)/2,      105, 0, 0, 255,     4, 10.00, true, "Poison",
+    {"purple grape",       0, 0, (2+PLAYER_SIZE)/2,      150, 0, 255, 255,  1.5, 26.00, true, "Fruit", 0,
+    "A juicy grape, grants 1.5 energy"},
+    {"green grape",         0, 0, (2+PLAYER_SIZE)/2,      0, 135, 20, 255,   2.0, 22.00, true, "Fruit", 0,
+    "A sour grape, grants 2 energy, because sour grapes are better than purple grapes."},
+    {"blueberry",           0, 0, (1+PLAYER_SIZE)/2,      0, 35, 255, 255,   1.0, 24.00, true, "Fruit", 0,
+    "A blueberry, grants 1 energy"},
+    {"water melon", 0, 0, (12+PLAYER_SIZE)/2,     0, 185, 0, 255,   6.0, 6.00, true, "Fruit", 0,
+    "A water melon, grants 6 energy"},
+    {"cheese",      0, 0, (4+PLAYER_SIZE)/2,      200, 200, 0, 255,  2.5, 12.00, true, "Fruit", 0,
+    "Cheesy cheese, grants 2.5 energy"},
+    {"orange",      0, 0, (8+PLAYER_SIZE)/2,      255, 150, 0, 255,    3.5, 7.00, true, "Fruit", 0,
+    "A zesty sour orange, grants 3.5 energy"},
+    {"posion apple",0, 0, (8+PLAYER_SIZE)/2,      105, 0, 0, 255,     4, 9.00, true, "Poison", 2,
     "A poison apple will cause 4 snake segments to die slowly, do NOT eat it"},
-    {"ghost apple", 0, 0, (0.5+PLAYER_SIZE)/2,      100, 100, 100, 20,  -1, 1.00, true, "Ghost", 
+    {"ghost apple", 0, 0, (0.5+PLAYER_SIZE)/2,      100, 100, 100, 20,  -1, 1.50, true, "Ghost", 3, 
     "This ghost apple is haunted by a entity that will scare the ever living segment off of the snake, and then the snake will go crazy. Do the snake a favor by NOT eat this"},
-    {"apple of greed", 0, 0, (10+PLAYER_SIZE)/2,    255, 0, 0, 255,   2, 0.85, true, "Mult",
+    {"apple of greed", 0, 0, (10+PLAYER_SIZE)/2,    255, 0, 0, 255,   2, 6.00, true, "Mult", 0,
     "This apple grants an energy multiplier equal to its own energy"},
-    {"apple of magnetism", 0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 8.00, true, "Magnet",
+    {"apple of magnetism", 0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 7.00, true, "Magnet", 0,
     "This apple magnetises nearby fruits towards the snake"},
-    {"apple of healing", 0, 0, (8+PLAYER_SIZE)/2,      0, 255, 150, 255,    1, 2.00, true, "Heal",
+    {"apple of healing", 0, 0, (8+PLAYER_SIZE)/2,      0, 255, 150, 255,    1, 5.00, true, "Heal", 0,
     "A neon holy apple. Click its icon to cure poison"},
-    {"holy banana", 0, 0, (3+PLAYER_SIZE)/2,   255, 220, 60, 255,  1, 0.50, true, "Ward",
+    {"holy banana", 0, 0, (3+PLAYER_SIZE)/2,   255, 220, 60, 255,  1, 3.00, true, "Ward", 0,
     "A blessed banana. Saves the snake from death once. When it saves you from a crash, the snake reverses its tracks"},
-    {"giant grape",     0, 0, (16+PLAYER_SIZE)/2,      150, 0, 255, 255,   2, 0.30, true, "Giant",
-    "A colossal grape. Turns the snake giant, sucking fruits right into its maw"}
+    {"giant grape",     0, 0, (16+PLAYER_SIZE)/2,      150, 0, 255, 255,   2, 6.00, true, "Giant", 0,
+    "A colossal grape. Turns the snake giant, sucking fruits right into its maw"},
+    {"rock of time",    0, 0, (8+PLAYER_SIZE)/2,      40, 60, 45, 255,    1.5, 3.00, true, "Time", 0,
+    "A radioactive rock of time. Eat it to travel back to where you started and respawn every fruit you ate in its original spot. Radiates a green glow and spins counter-clockwise"}
 };
 
 struct Food foods[FRUIT_COUNT] = { 0 };
 
 struct Player bodies[MAX_P_LENGTH] = { 0 };
+
+struct Food timeSnapshot[FRUIT_COUNT] = { 0 };
 
 struct Particle particles[MAX_PARTICLES] = { 0 };
 
@@ -252,6 +256,27 @@ struct TextLabel labels[MAX_UI] = {
         "LEVEL: ",
         "stats"
     },
+
+    {
+        "fruits",
+        UI_BORDER_OFFSET*2+240, 0,
+        50, UI_BORDER_OFFSET-2,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0,
+        0,
+        10,
+        0, 0, 0, 0,
+        0, 255, 255, 255,
+        0, 0,
+        true,
+        "0/0",
+        "stats"
+    },
 };
 
 // UI Init
@@ -287,6 +312,9 @@ void resetGame(void) {
     scaredTimer = 0.0f;
     poisonTick = 4;
     poisoned = false;
+    poisonIncr = 0;
+    poisonDebounce = false;
+    poisonColorAlt = false;
     food_mult = 1.0f;
     mult_active = false;
     multTimer = 0.0f;
@@ -298,6 +326,8 @@ void resetGame(void) {
     wardTimer = 0.0f;
     warp_active = false;
     warpTimer = 0.0f;
+    timeTravel_active = false;
+    timeTravelTimer = 0.0f;
     giant_active = false;
     giantTimer = 0.0f;
     clearEffectFrames();
@@ -461,7 +491,7 @@ int main(void) {
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
                 if (game == true && !paused && player1.stomach > 0.0f) {
                     player1.mvSpd = 15.0f;
-                    player1.stomach -= 2.0f * GetFrameTime(); // 2 energy/sec, frame-rate independent
+                    player1.stomach -= SPRINT_BURN * GetFrameTime(); // burst speed, frame-rate independent
                     sprint_active = true;
                 } else {
                     player1.mvSpd = 10.0f;
@@ -473,11 +503,18 @@ int main(void) {
             }
         }
 
-        if (game == true && !paused) {
+if (game == true && !paused) {
             UpdateMusicStream(backgroundSound); 
             onMultiplier();
             onMagnet();
             onGiant();
+            // Reset after a warp lands so it doesn't drain its accumulated
+            // time as a burst of instant movement steps.
+            if (clearMoveTimer)
+            {
+                moveTimer = 0.0;
+                clearMoveTimer = false;
+            }
             moveTimer += GetFrameTime();
             if (moveTimer >= moveDelay && !warp_active) {
                 moveTimer -= moveDelay;
@@ -614,6 +651,13 @@ int main(void) {
 
             BeginMode2D(shakeCamera);
 
+            // Map flashes bright green / black in sync with the snake while rewinding
+            Color gridTint = WHITE;
+            if (timeTravel_active)
+                gridTint = (sinf(GetTime() * TIME_FLASH_RATE) > 0.0f)
+                    ? (Color){0, 255, 0, 255}
+                    : (Color){0, 0, 0, 255};
+
             DrawTextureRec(
                 gridTexture.texture,
                 (Rectangle){
@@ -623,7 +667,7 @@ int main(void) {
                     -gridTexture.texture.height
                 },
                 (Vector2){0,0},
-                WHITE
+                gridTint
             );
             
             if (game == true) {
@@ -703,7 +747,9 @@ int main(void) {
                     (unsigned char)player1.a
                 };
 
-                if (mult_active)
+                if (timeTravel_active)
+                    headColor = timeTravelTint(headColor);
+                else if (mult_active)
                     headColor = hangryTint(headColor);
                 else if (giant_active)
                     headColor = giantTint(headColor);

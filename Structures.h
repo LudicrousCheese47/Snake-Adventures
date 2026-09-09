@@ -40,6 +40,8 @@ struct Food {
     double rarity; //How rare it is for the item to spawn
     bool active; //Helps indicate if the fruit was eaten
     char *ability; //Special quirk of the food
+    int threatLevel; //0 = harmless/beneficial, higher = more dangerous. Locks the
+                     //fruit out of the spawn pool until the player's level is high enough.
     char *description;
 };
 

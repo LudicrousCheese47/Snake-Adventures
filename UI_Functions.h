@@ -231,6 +231,29 @@ void updateTextLabels(int i)
         snprintf(labels[i].text, sizeof(labels[i].text), "SCORE: %d", score);
     else if (strcmp(labels[i].name, "level") == 0)
         snprintf(labels[i].text, sizeof(labels[i].text), "LEVEL: %d", level);
+    else if (strcmp(labels[i].name, "fruits") == 0)
+    {
+        // Plain fruits are the only ones that advance the level, so show
+        // exactly those that are still on the board.
+        int remaining = 0;
+        for (int f = 0; f < FRUIT_COUNT; f++)
+        {
+            if (foods[f].active && strcmp(foods[f].ability, "Fruit") == 0)
+                remaining++;
+        }
+        snprintf(labels[i].text, sizeof(labels[i].text), "%d/%d", remaining, fruitsTotalThisLevel);
+    }
+
+    // Stats labels auto-grid: laid out left to right against a running cursor,
+    // each positioned by its own measured text width, so they never overlap
+    // no matter how the numbers grow or shrink.
+    if (strcmp(labels[i].type, "stats") == 0)
+    {
+        int textWidth = MeasureText(labels[i].text, labels[i].f_size);
+        labels[i].w = textWidth + 8;
+        labels[i].x = statsLabelX + textWidth / 2;
+        statsLabelX += textWidth + STATS_LABEL_GAP;
+    }
 
     // Background
     DrawRectangleGradientV(
@@ -276,6 +299,9 @@ void updateUI(void)
 {
     int mouseX = GetMouseX();
     int mouseY = GetMouseY();
+
+    // Start the stats label grid from the left border each frame.
+    statsLabelX = UI_BORDER_OFFSET + 8;
 
     for (int layer = 0; layer < MAX_UI; layer++)
     {
@@ -359,9 +385,14 @@ int addEffectFrame(char *ability, Color fruitColor, Color accentColor, float dur
     {
         if (effectFrames[i].active && strcmp(effectFrames[i].ability, ability) == 0)
         {
-            // Collectables stack; buffs just refresh their timer
+            // Collectables stack per type; buffs just refresh their timer.
+            // A full stack of one type never locks out a different ability.
             if (clickable)
+            {
+                if (effectFrames[i].count >= MAX_EFFECT_STACK)
+                    return -1;
                 effectFrames[i].count++;
+            }
 
             effectFrames[i].timer = (clickable && duration <= 0.0f) ? 1.0f : duration;
             effectFrames[i].maxTimer = (effectFrames[i].timer > 0.0f) ? effectFrames[i].timer : 1.0f;
@@ -434,21 +465,8 @@ void updateEffectFrames(void)
     int mouseX = GetMouseX();
     int mouseY = GetMouseY();
 
-    // Auto-consume a held heal apple the moment the snake is poisoned
-    if (poisoned)
-    {
-        for (int i = 0; i < MAX_EFFECT_FRAMES; i++)
-        {
-            if (effectFrames[i].active &&
-                effectFrames[i].clickable &&
-                effectFrames[i].count >= 1 &&
-                strcmp(effectFrames[i].ability, "Heal") == 0)
-            {
-                useEffectFrame(i);
-                break;
-            }
-        }
-    }
+    // Note: the auto-consumption of a held heal while poisoned lives in
+    // whilePoisoned() so it lands BEFORE the damage tick each frame.
 
     // Activate collectables with number keys (1-8, matching the tray order)
     for (int i = 0; i < MAX_EFFECT_FRAMES; i++)
@@ -780,9 +798,86 @@ void triggerWardAbility(void)
     wardTimer += WARD_SHIELD_DURATION;
     ward_active = true;
 
-    // The player flies to the center of the grid
+    // The player flies to the center of the grid, coiled up for the ride
     if (!warp_active)
     {
+        scared = false;   // don't strand a panicking snake in the middle of the coil
+
+        // Coil the whole snake into a spiral around its current tile first, so
+        // the body flies to the centre as one compact shape instead of dragging
+        // a sprawling tail that clips outside the map.
+        const int minTile = UI_BORDER_OFFSET / PLAYER_SIZE;
+        const int maxTile = (SCREEN_WIDTH / PLAYER_SIZE) - minTile - 1;
+
+        int coX[MAX_P_LENGTH];
+        int coY[MAX_P_LENGTH];
+
+        // Coil the body into stacked folds sitting strictly BEHIND the head,
+        // with the neck right behind it. The head starts at the coil's exit,
+        // so its forward and side tiles are always clear and it never warps
+        // into its own body.
+        int foldW = (player1.length > 2)
+            ? (int)floorf(sqrtf((float)(player1.length - 1)))
+            : 2;
+        if (foldW < 2) foldW = 2;
+
+        int fx = -1, fy = 0;        // first fold starts right behind the head
+        int fdx = -1;               // sweeps left first
+        int placed = 0;
+        while (placed < player1.length)
+        {
+            for (int i = 0; i < foldW && placed < player1.length;
+                 i++, fx += fdx, placed++)
+            {
+                coX[placed] = fx;
+                coY[placed] = fy;
+            }
+            fx -= fdx;              // land the stitch on the fold's far end
+            fy -= 1;                // step the coil back another layer
+            fdx = -fdx;
+        }
+
+        // Spin the folded coil so it always sits behind the direction of travel
+        for (int i = 0; i < player1.length; i++)
+        {
+            int ix = coX[i], iy = coY[i];
+            if (strcmp(direction, "left") == 0)   { coX[i] = -ix; coY[i] =  iy; }
+            else if (strcmp(direction, "up") == 0)   { coX[i] =  iy; coY[i] = -ix; }
+            else if (strcmp(direction, "down") == 0) { coX[i] = -iy; coY[i] =  ix; }
+            // right / any other direction keeps the identity orientation
+        }
+
+        // Keep the coiled outline inside the bordered field
+        int minOx = coX[0], maxOx = coX[0];
+        int minOy = coY[0], maxOy = coY[0];
+        for (int i = 1; i < player1.length; i++)
+        {
+            if (coX[i] < minOx) minOx = coX[i];
+            if (coX[i] > maxOx) maxOx = coX[i];
+            if (coY[i] < minOy) minOy = coY[i];
+            if (coY[i] > maxOy) maxOy = coY[i];
+        }
+
+        int hx = player1.x / PLAYER_SIZE;
+        int hy = player1.y / PLAYER_SIZE;
+        if (hx + minOx < minTile) hx = minTile - minOx;
+        if (hx + maxOx > maxTile) hx = maxTile - maxOx;
+        if (hy + minOy < minTile) hy = minTile - minOy;
+        if (hy + maxOy > maxTile) hy = maxTile - maxOy;
+
+        player1.x = hx * PLAYER_SIZE;
+        player1.y = hy * PLAYER_SIZE;
+        player1.visualX = (float)player1.x;
+        player1.visualY = (float)player1.y;
+
+        for (int i = 0; i < player1.length; i++)
+        {
+            bodies[i].x = (hx + coX[i]) * PLAYER_SIZE;
+            bodies[i].y = (hy + coY[i]) * PLAYER_SIZE;
+            bodies[i].visualX = (float)bodies[i].x;
+            bodies[i].visualY = (float)bodies[i].y;
+        }
+
         warp_active = true;
         warpStartX = (float)player1.x;
         warpStartY = (float)player1.y;
@@ -841,20 +936,20 @@ void clearEffectFrames(void)
 
 Color energyToColor(float amount)
 {
-    // Gradient across the energy range (lowest -> highest):
-    // blue, cyan, green, yellow, orange, red, pink, purple, white
+    // Sizzling, fully-saturated gradient across the energy range:
+    // blue, cyan, green, yellow, orange, red, magenta, violet, white
     static const float stops[9] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f
     };
     static const Color stopsColor[9] = {
-        { 40, 90, 255, 255 },    // blue
-        { 0, 220, 255, 255 },    // cyan
-        { 60, 255, 120, 255 },   // green
-        { 255, 235, 80, 255 },   // yellow
-        { 255, 150, 40, 255 },   // orange
-        { 255, 60, 40, 255 },    // red
-        { 255, 120, 200, 255 },  // pink
-        { 180, 60, 255, 255 },   // purple
+        { 0, 0, 255, 255 },      // electric blue
+        { 0, 255, 255, 255 },    // cyan
+        { 0, 255, 0, 255 },      // pure green
+        { 255, 255, 0, 255 },    // yellow
+        { 255, 140, 0, 255 },    // blazing orange
+        { 255, 0, 0, 255 },      // pure red
+        { 255, 0, 255, 255 },    // magenta
+        { 170, 0, 255, 255 },    // violet
         { 255, 255, 255, 255 }   // white
     };
 
@@ -883,7 +978,7 @@ Color energyToColor(float amount)
     return out;
 }
 
-void spawnEnergyPopup(float energy)
+void spawnEnergyPopup(float energy, bool isAbility)
 {
     if (energy <= 0.0f)
         return;
@@ -901,6 +996,9 @@ void spawnEnergyPopup(float energy)
             tempLabels[i].maxLifetime = 1.0f;
             // Give it a unique name
             tempLabels[i].name = "energy_popup";
+
+            // Ability fruits get flagged so the renderer draws a badge
+            tempLabels[i].type = isAbility ? "ability" : NULL;
 
             // Text
             snprintf(tempLabels[i].text, sizeof(tempLabels[i].text), "+%.1f", actualEnergy);
@@ -926,15 +1024,15 @@ void spawnEnergyPopup(float energy)
             tempLabels[i].x = (int)tempLabels[i].visualX;
             tempLabels[i].y = (int)tempLabels[i].visualY;
 
-            // Text size — bigger for bigger energy hits
-            float sizeScale = 18.0f + actualEnergy * 4.0f;
-            if (sizeScale > 42.0f)
-                sizeScale = 42.0f;
+            // Text size — snappy and compact, scales modestly with energy
+            float sizeScale = 12.0f + actualEnergy * 2.2f;
+            if (sizeScale > 26.0f)
+                sizeScale = 26.0f;
 
             tempLabels[i].f_size = (int)sizeScale;
 
-            // Starting scale
-            tempLabels[i].scale = 2.5f;
+            // Starting scale — big pop at spawn
+            tempLabels[i].scale = 1.35f;
             tempLabels[i].targetScale = 1.0f;
 
             // Text color — ramps by how much energy was consumed
@@ -960,6 +1058,31 @@ void spawnEnergyPopup(float energy)
             tempLabels[i].bb = 0;
             tempLabels[i].ba = 0;
 
+            // Ability fruit pickups EXPLODE with a radial burst — that blast
+            // is the "ability fruit" indicator now.
+            if (isAbility)
+            {
+                spawnFruitParticles(
+                    (float)tempLabels[i].x,
+                    (float)tempLabels[i].y,
+                    popupColor
+                );
+            }
+
+            // Dopamine burst — sparkles burst out of the pickup; bigger hits
+            // throw off more confetti. Ability fruit goes harder.
+            int sparkCount = (isAbility ? 16 : 10) + (int)(actualEnergy * 6.0f);
+            if (sparkCount > 48)
+                sparkCount = 48;
+            for (int s = 0; s < sparkCount; s++)
+            {
+                spawnGreedSparkle(
+                    (float)tempLabels[i].x,
+                    (float)tempLabels[i].y,
+                    popupColor
+                );
+            }
+
             return;
         }
     }
@@ -984,12 +1107,6 @@ void updateEnergyPopups(void)
 
         tempLabels[i].lifetime += dt;
 
-       // if (tempLabels[i].lifetime >= tempLabels[i].maxLifetime)
-      //  {
-       //     tempLabels[i].visible = false;
-      //      continue;
-      //  }
-
         float dx = targetX - tempLabels[i].visualX;
         float dy = targetY - tempLabels[i].visualY;
 
@@ -997,29 +1114,91 @@ void updateEnergyPopups(void)
 
         if (distance < 5.0f)
         {
+            // Arrived at the energy bar — little reward pop as it lands
+            Color arrivedColor = {
+                tempLabels[i].tr,
+                tempLabels[i].tg,
+                tempLabels[i].tb,
+                255
+            };
+
+            // Ability popups detonate on impact
+            if (tempLabels[i].type != NULL &&
+                strcmp(tempLabels[i].type, "ability") == 0)
+            {
+                spawnFruitParticles(
+                    tempLabels[i].visualX,
+                    tempLabels[i].visualY,
+                    arrivedColor
+                );
+            }
+
+            for (int s = 0; s < 5; s++)
+            {
+                spawnGreedSparkle(
+                    tempLabels[i].visualX,
+                    tempLabels[i].visualY,
+                    arrivedColor
+                );
+            }
+
             tempLabels[i].visible = false;
             continue;
         }
+
         if (distance > 0.001f)
         {
             dx /= distance;
             dy /= distance;
         }
 
-        
-        float speed = 300.0f;
+        // Bouncy flight path — the popup wobbles side to side across its
+        // direction of travel so it feels alive instead of sliding on rails.
+        float sway = 10.0f * fabsf(sinf(tempLabels[i].lifetime * 21.0f + (float)i * 1.7f));
+        float sdx = -dy * sway;
+        float sdy = dx * sway;
 
-        tempLabels[i].visualX += dx * speed * dt;
-        tempLabels[i].visualY += dy * speed * dt;
+        float speed = 350.0f;
+
+        tempLabels[i].visualX += dx * speed * dt + sdx * 26.0f * dt;
+        tempLabels[i].visualY += dy * speed * dt + sdy * 26.0f * dt;
 
         tempLabels[i].x = (int)tempLabels[i].visualX;
         tempLabels[i].y = (int)tempLabels[i].visualY;
 
-        tempLabels[i].scale = LerpFloat(
-            tempLabels[i].scale,
-            0.3f,
-            8.0f * dt
-        );
+        // Ability popups keep exploding — sparkles continuously shower out of
+        // the label the whole way to the energy bar.
+        if (tempLabels[i].type != NULL &&
+            strcmp(tempLabels[i].type, "ability") == 0 &&
+            fmodf(tempLabels[i].lifetime, 0.08f) < dt)
+        {
+            Color trailColor = {
+                tempLabels[i].tr,
+                tempLabels[i].tg,
+                tempLabels[i].tb,
+                255
+            };
+            for (int s = 0; s < 5; s++)
+            {
+                spawnGreedSparkle(
+                    tempLabels[i].visualX,
+                    tempLabels[i].visualY,
+                    trailColor
+                );
+            }
+        }
+
+        // Elastic pop-in with a living heartbeat throb: starts oversized,
+        // rubber-bands down, then keeps pulsing subtly while it flies.
+        float heartbeat =
+            1.0f + 0.07f * fabsf(sinf(GetTime() * 16.0f + (float)i));
+
+        float p = tempLabels[i].lifetime / 0.25f;
+        if (p > 1.0f)
+            p = 1.0f;
+
+        float pop = 1.35f * powf(1.0f - p, 2.0f);
+        tempLabels[i].scale = (1.0f + pop) * heartbeat;
     }
 }
 
@@ -1074,24 +1253,76 @@ void renderTempLabels(void)
             fade = 0.0f;
 
         // --------------------------------
-        // Outer glow — soft halo outside the glyphs so the text stays sharp
+        // White-hot flash right as it spawns — the popup ignites, then
+        // settles into its energy color. Kept at 45% so the color stays
+        // mouthwateringly saturated instead of washing to pale white.
         // --------------------------------
 
-        float glowAlphas[4] = { 38.0f, 26.0f, 15.0f, 7.0f };
+        float flash = 1.0f - tempLabels[i].lifetime / 0.18f;
+        if (flash < 0.0f)
+            flash = 0.0f;
+        if (flash > 1.0f)
+            flash = 1.0f;
+
+        float whiten = flash * 0.45f;
+
+        unsigned char fr = (unsigned char)(
+            tempLabels[i].tr + (255 - tempLabels[i].tr) * whiten);
+        unsigned char fg = (unsigned char)(
+            tempLabels[i].tg + (255 - tempLabels[i].tg) * whiten);
+        unsigned char fb = (unsigned char)(
+            tempLabels[i].tb + (255 - tempLabels[i].tb) * whiten);
+
+        // --------------------------------
+        // Pulsing halo — a soft glowing blob breathes behind the label so it
+        // reads as a bright, living reward.
+        // --------------------------------
+
+        float ringPulse =
+            0.5f + 0.5f * sinf(GetTime() * 34.0f + (float)i * 2.1f);
+
+        float ringR = fontSize * 1.2f * (1.0f + 0.22f * ringPulse);
+        if (ringR > 10.0f)
+        {
+            DrawCircleGradient(
+                (Vector2){
+                    tempLabels[i].visualX,
+                    tempLabels[i].visualY
+                },
+                ringR,
+                (Color){
+                    (unsigned char)(fr * 0.95f),
+                    (unsigned char)(fg * 0.95f),
+                    (unsigned char)(fb * 0.95f),
+                    (unsigned char)(105.0f * fade * (0.45f + 0.55f * ringPulse))
+                },
+                (Color){ 0, 0, 0, 0 }
+            );
+        }
+
+        // --------------------------------
+        // Outer glow — soft halo outside the glyphs so the text stays sharp.
+        // Its intensity pulses to draw the eye.
+        // --------------------------------
+
+        float glowPulse =
+            0.55f + 0.45f * sinf(GetTime() * 44.0f + (float)i * 3.3f);
+
+        float glowAlphas[4] = { 58.0f, 40.0f, 22.0f, 10.0f };
         int glowOffsets[4] = { 4, 7, 11, 15 };
 
         for (int pass = 0; pass < 4; pass++)
         {
             int off = glowOffsets[pass];
 
-            float passAlpha = glowAlphas[pass] * fade;
+            float passAlpha = glowAlphas[pass] * fade * glowPulse;
             if (passAlpha < 0.0f)
                 passAlpha = 0.0f;
 
             Color glowPass = {
-                tempLabels[i].tr,
-                tempLabels[i].tg,
-                tempLabels[i].tb,
+                fr,
+                fg,
+                fb,
                 (unsigned char)passAlpha
             };
 
@@ -1106,13 +1337,31 @@ void renderTempLabels(void)
         }
 
         // --------------------------------
+        // Pure-white hot core — a tight white copy under the glyphs makes the
+        // saturated color above it sizzle twice as bright.
+        // --------------------------------
+
+        DrawText(
+            text,
+            textX,
+            textY,
+            fontSize,
+            (Color){ 255, 255, 255, (unsigned char)(90.0f * fade * glowPulse * whiten) }
+        );
+
+        // --------------------------------
+        // Ability popups carry no badge — the constant sparkle explosion that
+        // erupts from them (spawn + flight trail + impact) IS the indicator.
+        // --------------------------------
+
+        // --------------------------------
         // Main text
         // --------------------------------
 
         Color textColor = {
-            tempLabels[i].tr,
-            tempLabels[i].tg,
-            tempLabels[i].tb,
+            fr,
+            fg,
+            fb,
             (unsigned char)(255.0f * fade)
         };
 

@@ -11,6 +11,15 @@
 #include "math.h"
 #include "Definitions.h"
 
+// The player's level needed before a fruit of this threat is allowed to
+// spawn at all. threat 0 fruits are always available.
+int threatLevelUnlock(int threat)
+{
+    if (threat >= 3) return 8;   // ghost apple — severe
+    if (threat == 2) return 5;   // poison — dangerous
+    return 3;                    // threat 1 — risky
+}
+
 char* getRandomFruit() {
     int arralen = sizeof(powerUps) / sizeof(powerUps[0]);
     double weights[arralen];
@@ -18,11 +27,23 @@ char* getRandomFruit() {
     char* lootNames[arralen];
     memset(lootNames, 0, sizeof(lootNames));
     double totalWeight = 0;
+    int weightedCount = 0;
     for (int i = 0; i < arralen; i++) {
+        // Threat-gated: dangerous fruits are locked out entirely until the
+        // player's level reaches their unlock, so higher levels progressively
+        // introduce harsher fruit into the pool.
+        if (powerUps[i].threatLevel > 0 &&
+            level < threatLevelUnlock(powerUps[i].threatLevel))
+            continue;
+
         weights[i] = powerUps[i].rarity;
         lootNames[i] = powerUps[i].name;
-        totalWeight+= powerUps[i].rarity;
+        totalWeight += powerUps[i].rarity;
+        weightedCount++;
     }
+
+    if (weightedCount == 0)
+        return "apple"; // never happens (safe fruit is always unlocked)
     
     // Generate random number up to the total weight
     double randomRoll = ((double)rand() / RAND_MAX) * totalWeight;
@@ -30,6 +51,7 @@ char* getRandomFruit() {
     
     // Loop through and find which item the roll landed on
     for (int i = 0; i < arralen; i++) {
+        if (weights[i] <= 0) continue;
         currentWeightThreshold += weights[i];
         if (randomRoll < currentWeightThreshold) {
             return lootNames[i];
@@ -41,7 +63,7 @@ char* getRandomFruit() {
         lootNames[i] = NULL;
     }
     
-    return NULL;
+    return "apple";
 }
 
 bool isTileOccupied(int x, int y)
@@ -84,9 +106,23 @@ void loadFoods(void) {
                 item.y = UI_BORDER_OFFSET+GetRandomValue(0, ((SCREEN_HEIGHT - UI_BORDER_OFFSET*2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
             } while (isTileOccupied(item.x, item.y));
             foods[i] = (struct Food)item;
+            timeSnapshot[i] = foods[i];
          //   printf("%s -> %s\n", item.name, item.ability);
             fruitID++;
         }
+        // Remember how many plain fruits this level started with
+        fruitsTotalThisLevel = 0;
+        for (int i = 0; i < FRUIT_COUNT; i++)
+        {
+            if (foods[i].active && strcmp(foods[i].ability, "Fruit") == 0)
+                fruitsTotalThisLevel++;
+        }
+        // Remember where the snake was when this level's board spawned, so the
+        // rock of time can rewind everything back to exactly this moment.
+        timeStartX = player1.x;
+        timeStartY = player1.y;
+        timeStartDirection = direction;
+        timeFruitTotal = fruitsTotalThisLevel;
         PlaySound(levelUpSound);
     }
 }
@@ -302,6 +338,93 @@ void renderFoods(void) {
                     };
 
                     DrawRectangleLinesEx(rec, 2.0, (Color){170, 90, 255, 255});
+                } else if (strcmp(foods[i].ability, "Time") == 0) {
+                    // Rock of time — a normal apple-style square colored a
+                    // bright neon green-yellow-cyan, radiating a pulsing glow,
+                    // spinning counter-clockwise.
+                    float cx = foods[i].x + PLAYER_SIZE / 2.0f;
+                    float cy = foods[i].y + PLAYER_SIZE / 2.0f;
+                    float pulse = 0.5f + 0.5f * sinf(GetTime() * 5.0f);
+
+                    // Cycle the hue through yellow -> green -> cyan
+                    float hue =
+                        60.0f + 120.0f * (0.5f + 0.5f * sinf(GetTime() * 2.0f));
+                    int R = 0, G = 0, B = 0;
+                    {
+                        float hh = fmodf(hue, 360.0f) / 60.0f;
+                        int sect = (int)hh;
+                        float f = hh - sect;
+                        float q = 1.0f - f;
+                        float tr = 0.0f, tg = 0.0f, tb = 0.0f;
+                        switch (sect % 6)
+                        {
+                            case 0: tr = 1.0f; tg = f;  break;
+                            case 1: tr = q;   tg = 1.0f; break;
+                            case 2: tg = 1.0f; tb = f;  break;
+                            case 3: tg = q;   tb = 1.0f; break;
+                            case 4: tr = f;   tb = 1.0f; break;
+                            default: tr = 1.0f; tb = q;  break;
+                        }
+                        R = (int)(tr * 255.0f);
+                        G = (int)(tg * 255.0f);
+                        B = (int)(tb * 255.0f);
+                    }
+
+                    // Radiative glow (pulsing radioactive aura)
+                    DrawCircleGradient(
+                        (Vector2){ cx, cy },
+                        24.0f + 8.0f * pulse,
+                        (Color){(unsigned char)R, (unsigned char)G, (unsigned char)B, 80},
+                        (Color){0, 0, 0, 0}
+                    );
+                    DrawCircleGradient(
+                        (Vector2){ cx, cy },
+                        13.0f + 5.0f * pulse,
+                        (Color){(unsigned char)R, (unsigned char)G, (unsigned char)B, 130},
+                        (Color){0, 0, 0, 0}
+                    );
+
+                    // The apple-style square, rotating counter-clockwise
+                    float sq = (float)foods[i].size;
+                    float spin = fmodf(GetTime() * TIME_ROCK_SPIN, 360.0f);
+
+                    DrawRectanglePro(
+                        (Rectangle){
+                            cx - sq * 0.5f,
+                            cy - sq * 0.5f,
+                            sq,
+                            sq
+                        },
+                        (Vector2){ sq * 0.5f, sq * 0.5f },
+                        spin,
+                        (Color){(unsigned char)R, (unsigned char)G, (unsigned char)B, 255}
+                    );
+
+                    // Thin neon square outline (rotated corners) so the spin
+                    // reads clearly
+                    float rad = sq * 0.7071f;
+                    Vector2 p[4];
+                    for (int k = 0; k < 4; k++)
+                    {
+                        float ang = spin * DEG2RAD
+                                  + (0.7853981f + k * 1.5707963f);
+                        p[k].x = cx + cosf(ang) * rad;
+                        p[k].y = cy + sinf(ang) * rad;
+                    }
+                    for (int k = 0; k < 4; k++)
+                    {
+                        DrawLineEx(
+                            p[k],
+                            p[(k + 1) % 4],
+                            1.5f,
+                            (Color){
+                                (unsigned char)((R + 120 > 255) ? 255 : R + 120),
+                                (unsigned char)((G + 120 > 255) ? 255 : G + 120),
+                                (unsigned char)((B + 120 > 255) ? 255 : B + 120),
+                                255
+                            }
+                        );
+                    }
                 }
             }
         }
@@ -312,12 +435,12 @@ bool isEatingObj(int x1, int x2, int y1, int y2, int l1, int l2, int w1, int w2)
     return false;
 }
 
-void onPlayerEatingFood(float energyConsumed)
+void onPlayerEatingFood(float energyConsumed, bool isAbility)
 {
     if (energyConsumed > 0)
     {
         // Create popup BEFORE changing the stomach
-        spawnEnergyPopup(energyConsumed);
+        spawnEnergyPopup(energyConsumed, isAbility);
 
         player1.stomach +=
             energyConsumed * (float)food_mult;
@@ -545,7 +668,10 @@ void isEatingFood(void)
 
                 foods[i].active = false;
 
-                onPlayerEatingFood(foods[i].energy);
+                // Marks whether this fruit granted an ability (vs plain food)
+                bool fruitIsAbility = strcmp(foods[i].ability, "Fruit") != 0;
+
+                onPlayerEatingFood(foods[i].energy, fruitIsAbility);
 
                 score = player1.length;
                 
@@ -567,6 +693,8 @@ void isEatingFood(void)
                     PlaySound(energyLevel);
                     PlaySound(mult_sound);
                     multTimer += MULT_DURATION;
+                    if (multTimer > MAX_BUFF_STACK)
+                        multTimer = MAX_BUFF_STACK;
                     mult_active = true;
                     food_mult = foods[i].energy;
                     multR = foods[i].r;
@@ -595,9 +723,26 @@ void isEatingFood(void)
                 else if (strcmp(foods[i].ability, "Poison") == 0)
                 {
                     PlaySound(hurtSound);
-                    poisonTick = 0;
-                    poisoned = true;
-                    poisonIncr = foods[i].energy;
+
+                    // Poison only ever applies ONE dose: a second apple while
+                    // already poisoned won't stack another chunk on top, so
+                    // the damage can't add up over time.
+                    if (!poisoned)
+                    {
+                        poisonTick = 0;
+                        poisoned = true;
+
+                        // "A poison apple will cause 4 snake segments to die
+                        // slowly" — a FIXED dose, never a fraction of the
+                        // snake, so it can't compound into a stack. Never
+                        // wipes the snake down to zero.
+                        int lostSegments = 4;
+                        if (lostSegments > player1.length - 1)
+                            lostSegments = player1.length - 1;
+                        if (lostSegments < 1)
+                            lostSegments = 1;
+                        poisonIncr = lostSegments;
+                    }
                 }
                 else if (strcmp(foods[i].ability, "Ghost") == 0)
                 {
@@ -631,6 +776,8 @@ void isEatingFood(void)
                     PlaySound(energyLevel);
                     PlaySound(mult_sound);
                     magnetTimer += MAGNET_DURATION;
+                    if (magnetTimer > MAX_BUFF_STACK)
+                        magnetTimer = MAX_BUFF_STACK;
                     magnet_active = true;
 
                     addEffectFrame(
@@ -706,6 +853,8 @@ void isEatingFood(void)
                     PlaySound(mult_sound);
 
                     giantTimer += GIANT_DURATION;
+                    if (giantTimer > MAX_BUFF_STACK)
+                        giantTimer = MAX_BUFF_STACK;
                     giant_active = true;
 
                     addEffectFrame(
@@ -723,6 +872,42 @@ void isEatingFood(void)
                             foods[i].x + foods[i].size / 2.0f,
                             foods[i].y + foods[i].size / 2.0f,
                             (Color){150, 0, 255, 255}
+                        );
+                    }
+                }
+                else if (strcmp(foods[i].ability, "Time") == 0)
+                {
+                    PlaySound(levelUpSound);
+
+                    // One rock of time per level: eating one makes every other
+                    // rock on the board crumble away too.
+                    for (int j = 0; j < FRUIT_COUNT; j++)
+                    {
+                        if (j != i &&
+                            foods[j].active &&
+                            strcmp(foods[j].ability, "Time") == 0)
+                            foods[j].active = false;
+                    }
+
+                    // Rewind: fly back to where the level began. While the
+                    // snake travels it glows cyan-green; landing restores the
+                    // original board (updateWarp does the restore).
+                    warpStartX = (float)player1.x;
+                    warpStartY = (float)player1.y;
+                    warpTargetX = (float)timeStartX;
+                    warpTargetY = (float)timeStartY;
+                    warp_active = true;
+                    warpTimer = 0.0f;
+                    timeTravel_active = true;
+                    timeTravelTimer = WARP_DURATION;
+
+                    // Green sparkle burst
+                    for (int s = 0; s < 60; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){0, 255, 160, 255}
                         );
                     }
                 }

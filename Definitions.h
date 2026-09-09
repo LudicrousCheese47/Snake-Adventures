@@ -11,7 +11,7 @@
 #include "math.h"
 
 #define UI_BORDER_OFFSET 20
-#define FRUIT_COUNT 150
+#define FRUIT_COUNT 120
 #define SCREEN_WIDTH (1000+UI_BORDER_OFFSET)
 #define SCREEN_HEIGHT (1000+UI_BORDER_OFFSET)
 #define PLAYER_SIZE 20
@@ -39,6 +39,7 @@ struct Particle groundParticles[MAX_GROUND_PARTICLES] = { 0 };
 #define PLYERS 4
 
 #define MAX_EFFECT_FRAMES 8
+#define MAX_EFFECT_STACK 2
 #define EFFECT_FRAME_SIZE 18.0f
 #define EFFECT_FRAME_GAP 3.0f
 #define EFFECT_FRAME_START_Y 1.0f
@@ -63,9 +64,19 @@ extern struct Particle particles[MAX_PARTICLES];
 extern struct Splat splats[MAX_SPLATS];
 extern struct TextLabel tempLabels[MAX_UI];
 extern struct EffectFrame effectFrames[MAX_EFFECT_FRAMES];
+extern struct Food timeSnapshot[FRUIT_COUNT];
 
 //extern int score;
 //extern int level;
+extern int fruitsTotalThisLevel;
+extern int statsLabelX;
+extern bool timeTravel_active;
+extern float timeTravelTimer;
+extern int timeStartX;
+extern int timeStartY;
+extern char *timeStartDirection;
+extern int timeFruitTotal;
+extern bool clearMoveTimer;
 extern float scaredTimer;
 extern float jumpscareTimer;
 extern const float JUMPSCARE_DURATION;
@@ -90,6 +101,9 @@ extern float giantTimer;
 extern Color boardColor;
 extern Color boardColorDark;
 #define MAGNET_DURATION 8.0f
+// Timed ability buffs stack up to this many seconds of total active time;
+// further pickups while already stacked just refresh back toward the cap.
+#define MAX_BUFF_STACK 12.0f
 #define HOLY_DURATION 6.0f
 #define MAGNET_RADIUS 150.0f
 #define MAGNET_SPEED 120.0f
@@ -119,8 +133,40 @@ int poisonColorAlt = false;
 bool poisoned = false;
 bool poisonDebounce = false; 
 int minStomachCap = 10;
+
+// --- Balance tuning -------------------------------------------------------
+// Base hunger burn while idle (energy per second).
+#define BASE_METABOLISM 0.35f
+// Extra hunger burn per snake segment (bigger snake = hungrier).
+#define METABOLISM_PER_SEGMENT 0.02f
+// Cost of holding left-shift to sprint (energy per second).
+#define SPRINT_BURN 2.0f
+// Energy required to grow one segment: base + a slowly increasing tax so
+// runaway growth flattens instead of snowballing.
+#define GROWTH_BASE 10
+#define GROWTH_SCALE 0.12f
 int level = 1;
 float food_mult = 1.0f;
+int fruitsTotalThisLevel = 0;
+#define STATS_LABEL_GAP 16
+int statsLabelX = 0; // Left-trunning cursor used to auto-grid the stats labels
+
+// --- Rock of Time: time-travel ability ------------------------------------
+// While warping back to the level start the snake glows cyan-green and its
+// eye spins; when it lands, the board reverts to how it was when the level
+// began (see timeSnapshot).
+bool timeTravel_active = false;
+float timeTravelTimer = 0.0f;
+int timeStartX = 0;
+int timeStartY = 0;
+char *timeStartDirection = "right";
+int timeFruitTotal = 0;
+// Set when a warp lands so the main loop resets its move timer — otherwise
+// the timer keeps running during the flight and the snake sprints several
+// tiles in a row right after landing.
+bool clearMoveTimer = false;
+#define TIME_ROCK_SPIN 110.0f   // deg/sec, spins counter-clockwise
+#define TIME_FLASH_RATE 20.0f   // green/black flash speed while rewinding
 #define MULT_DURATION 9.0f
 float multTimer = 0.0f;
 bool mult_active = false;
@@ -187,7 +233,7 @@ Music backgroundSound;
 
 // Predefine Functions
 
-void spawnEnergyPopup(float energy);
+void spawnEnergyPopup(float energy, bool isAbility);
 void updatePlayerLength(void);
 
 int addEffectFrame(char *ability, Color fruitColor, Color accentColor, float duration, bool clickable);
@@ -238,7 +284,7 @@ void renderFoods(void); //Renders the loaded foods
 bool isEatingObj(int x1, int x2, int y1, int y2, int l1, int l2, int w1, int w2); //Fires successfully when player is touching any object
 void createBody(int directionMode); //Handles the creation of the players body segments
 void updatePlayerLength(void); //Updates player length after stomach capacity has been reached therefore converting the energy in the stomach to +1 length
-void onPlayerEatingFood(float energyConsumed); //Handles what happens after the player eats the fruit
+void onPlayerEatingFood(float energyConsumed, bool isAbility); //Handles what happens after the player eats the fruit
 void renderPlayerBodies(float lerpFactor, float headDrawX, float headDrawY); //Loads the player body segments
 void isEatingFood(void); //Fires when isEatingObject is successeful and checks if the object is a fruit
 void checkSelfCollision(void); //Ends game if player touches themselves
