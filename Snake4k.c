@@ -51,6 +51,7 @@ struct Player bodies[MAX_P_LENGTH];
 struct Particle particles[MAX_PARTICLES];
 struct Splat splats[MAX_SPLATS];
 struct TextLabel tempLabels[MAX_UI];
+struct Banner banners[MAX_BANNERS];
 
 const float JUMPSCARE_DURATION = 0.25f;
 
@@ -108,37 +109,94 @@ struct Player player1 = {
 };
 
 struct Food powerUps[] = {
-    {"apple",       0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 12.00, true, "Fruit", 0,
+    {"apple",0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 12.00, true, "Fruit", 0,
     "A delicious apple, grants 3 energy"},
-    {"purple grape",       0, 0, (2+PLAYER_SIZE)/2,      150, 0, 255, 255,  1.5, 26.00, true, "Fruit", 0,
+    {"purple grape",0, 0, (2+PLAYER_SIZE)/2,      150, 0, 255, 255,     1.5, 26.00, true, "Fruit", 0,
     "A juicy grape, grants 1.5 energy"},
-    {"green grape",         0, 0, (2+PLAYER_SIZE)/2,      0, 135, 20, 255,   2.0, 22.00, true, "Fruit", 0,
+    {"green grape",0, 0, (2+PLAYER_SIZE)/2,      0, 165, 24, 255,     2.0, 22.00, true, "Fruit", 0,
     "A sour grape, grants 2 energy, because sour grapes are better than purple grapes."},
-    {"blueberry",           0, 0, (1+PLAYER_SIZE)/2,      0, 35, 255, 255,   1.0, 24.00, true, "Fruit", 0,
+    {"blueberry",0, 0, (1+PLAYER_SIZE)/2,      0, 35, 255, 255,     1.0, 24.00, true, "Fruit", 0,
     "A blueberry, grants 1 energy"},
-    {"water melon", 0, 0, (12+PLAYER_SIZE)/2,     0, 185, 0, 255,   6.0, 6.00, true, "Fruit", 0,
+    {"water melon",0, 0, (12+PLAYER_SIZE)/2,      0, 226, 0, 255,     6.0, 8.00, true, "Fruit", 0,
     "A water melon, grants 6 energy"},
-    {"cheese",      0, 0, (4+PLAYER_SIZE)/2,      200, 200, 0, 255,  2.5, 12.00, true, "Fruit", 0,
+    {"cheese",0, 0, (4+PLAYER_SIZE)/2,      244, 244, 0, 255,     2.5, 12.00, true, "Fruit", 0,
     "Cheesy cheese, grants 2.5 energy"},
-    {"orange",      0, 0, (8+PLAYER_SIZE)/2,      255, 150, 0, 255,    3.5, 7.00, true, "Fruit", 0,
+    {"orange",0, 0, (8+PLAYER_SIZE)/2,      255, 150, 0, 255,     3.5, 9.00, true, "Fruit", 0,
     "A zesty sour orange, grants 3.5 energy"},
-    {"posion apple",0, 0, (8+PLAYER_SIZE)/2,      105, 0, 0, 255,     4, 9.00, true, "Poison", 2,
+    {"orange of speed",0, 0, (8+PLAYER_SIZE)/2,      255, 150, 0, 255,     4.0, 3.00, true, "Speed", 0,
+    "A plasma-charged orange crackling with neon blue lightning. Grants a 1.5x speed multiplier while its charge lasts"},
+    {"bolt pepper",0, 0, (7+PLAYER_SIZE)/2,      255, 0, 24, 255,     3.0, 2.00, true, "Speed", 2,
+    "A spicy red pepper smoking with static. Grants a 1.5x speed multiplier while its charge lasts"},
+    {"comet cherry",0, 0, (4+PLAYER_SIZE)/2,      0, 220, 255, 255,     2.5, 1.50, true, "Speed", 3,
+    "A cyan comet-cherry trailing stardust. Grants a 1.5x speed multiplier while its charge lasts"},
+    {"banana of endurance",0, 0, (3+PLAYER_SIZE)/2,      255, 214, 0, 255,     3.5, 3.00, true, "Endurance", 1,
+    "A glowing yellow banana radiating pure endurance. While its charge lasts, moving and sprinting burn HALF as much energy"},
+    {"stamina melon",0, 0, (12+PLAYER_SIZE)/2,      137, 255, 87, 255,     3.0, 2.00, true, "Endurance", 2,
+    "A pale stamina melon. While its charge lasts, moving and sprinting burn HALF as much energy"},
+    {"marathon pear",0, 0, (8+PLAYER_SIZE)/2,      255, 183, 0, 255,     3.0, 1.50, true, "Endurance", 3,
+    "A golden marathon pear. While its charge lasts, moving and sprinting burn HALF as much energy"},
+    {"posion apple",0, 0, (8+PLAYER_SIZE)/2,      128, 0, 0, 255,     4, 12.00, true, "Poison", 2,
     "A poison apple will cause 4 snake segments to die slowly, do NOT eat it"},
-    {"ghost apple", 0, 0, (0.5+PLAYER_SIZE)/2,      100, 100, 100, 20,  -1, 1.50, true, "Ghost", 3, 
+    {"venom berry",0, 0, (3+PLAYER_SIZE)/2,      78, 0, 110, 255,     4, 4.00, true, "Poison", 2,
+    "A gnarled venom berry with the same curse — 4 snake segments die slowly, do NOT eat it"},
+    {"super poison apple",0, 0, (8+PLAYER_SIZE)/2,      250, 0, 0, 255,     4, 3.50, true, "SuperPoison", 4,
+    "A MUTATED poison apple that bypasses the apple of healing. It eats a quarter of the snake away at a brutal rate. DO NOT EAT IT"},
+    {"cursed tomato",0, 0, (10+PLAYER_SIZE)/2,      255, 23, 0, 255,     4, 3.00, true, "SuperPoison", 4,
+    "A cursed rotten tomato. It bypasses the apple of healing and eats a quarter of the snake away at a brutal rate. DO NOT EAT IT"},
+    {"ghost apple",0, 0, (0.5+PLAYER_SIZE)/2,      150, 150, 255, 20,     -1, 2.50, true, "Ghost", 3,
     "This ghost apple is haunted by a entity that will scare the ever living segment off of the snake, and then the snake will go crazy. Do the snake a favor by NOT eat this"},
-    {"apple of greed", 0, 0, (10+PLAYER_SIZE)/2,    255, 0, 0, 255,   2, 6.00, true, "Mult", 0,
+    {"haunted plum",0, 0, (5+PLAYER_SIZE)/2,      120, 110, 255, 20,     -1, 1.50, true, "Ghost", 3,
+    "A frostbitten haunted plum with the same curse — it scares the segments off the snake and sends it crazy. Do NOT eat it"},
+    {"apple of greed",0, 0, (10+PLAYER_SIZE)/2,      255, 0, 0, 255,     2, 6.00, true, "Mult", 2,
     "This apple grants an energy multiplier equal to its own energy"},
-    {"apple of magnetism", 0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 7.00, true, "Magnet", 0,
+    {"berry of frenzy",0, 0, (2+PLAYER_SIZE)/2,      244, 0, 73, 255,     1.5, 2.00, true, "Mult", 3,
+    "A blood-red frenzy berry. Grants an energy multiplier equal to its own energy"},
+    {"melon of fortune",0, 0, (12+PLAYER_SIZE)/2,      255, 45, 103, 255,     4.0, 1.50, true, "Mult", 4,
+    "A striped pink fortune melon. Grants an energy multiplier equal to its own energy"},
+    {"apple of magnetism",0, 0, (8+PLAYER_SIZE)/2,      255, 0, 0, 255,     3, 7.00, true, "Magnet", 0,
     "This apple magnetises nearby fruits towards the snake"},
-    {"apple of healing", 0, 0, (8+PLAYER_SIZE)/2,      0, 255, 150, 255,    1, 5.00, true, "Heal", 0,
+    {"coconut of attraction",0, 0, (10+PLAYER_SIZE)/2,      146, 76, 5, 255,     2.5, 2.00, true, "Magnet", 2,
+    "A hairy brown coconut that pulls nearby fruit straight into the snake's path"},
+    {"fig of pull",0, 0, (6+PLAYER_SIZE)/2,      144, 0, 207, 255,     2.0, 2.00, true, "Magnet", 3,
+    "A purple fig with a gravitational hum. Magnetises nearby fruits toward the snake"},
+    {"apple of healing",0, 0, (8+PLAYER_SIZE)/2,      0, 255, 150, 255,     1, 5.00, true, "Heal", 0,
     "A neon holy apple. Click its icon to cure poison"},
-    {"holy banana", 0, 0, (3+PLAYER_SIZE)/2,   255, 220, 60, 255,  1, 3.00, true, "Ward", 0,
+    {"mango of mending",0, 0, (9+PLAYER_SIZE)/2,      255, 166, 0, 255,     1, 2.00, true, "Heal", 2,
+    "A sun-ripened mending mango. Click its icon to cure poison"},
+    {"peach of life",0, 0, (9+PLAYER_SIZE)/2,      255, 132, 161, 255,     1, 2.00, true, "Heal", 3,
+    "A soft fuzzy peach with a heartbeat. Click its icon to cure poison"},
+    {"holy banana",0, 0, (3+PLAYER_SIZE)/2,      255, 209, 0, 255,     1, 3.00, true, "Ward", 3,
     "A blessed banana. Saves the snake from death once. When it saves you from a crash, the snake reverses its tracks"},
-    {"giant grape",     0, 0, (16+PLAYER_SIZE)/2,      150, 0, 255, 255,   2, 6.00, true, "Giant", 0,
+    {"spirit lime",0, 0, (5+PLAYER_SIZE)/2,      88, 255, 16, 255,     1, 1.50, true, "Ward", 4,
+    "A ghostly glowing lime that bars death once. On a fatal crash it saves the snake and reverses its tracks"},
+    {"guardian apricot",0, 0, (8+PLAYER_SIZE)/2,      255, 161, 59, 255,     1, 1.50, true, "Ward", 4,
+    "A warm guardian apricot. Saves the snake from death once, then reverses its tracks"},
+    {"giant grape",0, 0, (16+PLAYER_SIZE)/2,      150, 0, 255, 255,     2, 6.00, true, "Giant", 2,
     "A colossal grape. Turns the snake giant, sucking fruits right into its maw"},
-    {"rock of time",    0, 0, (8+PLAYER_SIZE)/2,      40, 60, 45, 255,    1.5, 3.00, true, "Time", 0,
-    "A radioactive rock of time. Eat it to travel back to where you started and respawn every fruit you ate in its original spot. Radiates a green glow and spins counter-clockwise"}
+    {"mega melon",0, 0, (16+PLAYER_SIZE)/2,      0, 244, 110, 255,     3, 2.00, true, "Giant", 3,
+    "A garden-sized melon. Turns the snake giant, sucking fruits right into its maw"},
+    {"colossal cherry",0, 0, (14+PLAYER_SIZE)/2,      255, 0, 0, 255,     2, 1.50, true, "Giant", 4,
+    "A comically giant cherry. Turns the snake giant, devouring fruit with its maw"},
+    {"rock of time",0, 0, (8+PLAYER_SIZE)/2,      38, 73, 47, 255,     1.5, 3.00, true, "Time", 3,
+    "A radioactive rock of time. Eat it to travel back to where you started and respawn every fruit you ate in its original spot. Radiates a green glow and spins counter-clockwise"},
+    {"hourglass apple",0, 0, (8+PLAYER_SIZE)/2,      255, 185, 26, 255,     2.0, 2.00, true, "Time", 4,
+    "An apple with an hourglass core of golden sand. Eat to equip a rewind that returns to the level's start"},
+    {"chrono plum",0, 0, (6+PLAYER_SIZE)/2,      33, 0, 195, 255,     2.5, 1.50, true, "Time", 4,
+    "A plum frozen mid-blink of time. Eat to equip a rewind back to where the level began"},
+    {"lucky clover",0, 0, (5+PLAYER_SIZE)/2,      0, 255, 75, 255,     2, 4.50, true, "Lucky", 2,
+    "A four-leafed clover of fortune. While lucky, every fruit eaten has a 50% chance to grant DOUBLE energy"},
+    {"golden horseshoe",0, 0, (8+PLAYER_SIZE)/2,      255, 183, 0, 255,     3, 3.50, true, "Lucky", 3,
+    "A gleaming golden horseshoe. While lucky, every fruit eaten has a 50% chance to grant DOUBLE energy"},
+    {"seed of renewal",0, 0, (3+PLAYER_SIZE)/2,      29, 171, 29, 255,     1, 4.00, true, "Grow", 4,
+    "A dormant green seed. Eat it to equip instant growth — click its icon to sprout 3 new segments on the spot"},
+    {"super sprout",0, 0, (6+PLAYER_SIZE)/2,      87, 255, 20, 255,     2, 3.00, true, "Grow", 4,
+    "A bursting super sprout. Eat it to equip instant growth — click its icon to grow 3 new segments instantly"},
+    {"warp melon",0, 0, (10+PLAYER_SIZE)/2,      213, 0, 244, 255,     2, 3.50, true, "Warp", 2,
+    "A melon warped out of reality. Eating it scrambles the snake's controls and flips its direction for a few dizzy seconds. Beware"},
+    {"glitch berry",0, 0, (4+PLAYER_SIZE)/2,      1, 255, 204, 255,     1, 2.50, true, "Warp", 2,
+    "A glitchy parasitic berry. Eating it flips the snake's controls upside-down for a few chaotic seconds. Beware"},
 };
+
 
 struct Food foods[FRUIT_COUNT] = { 0 };
 
@@ -178,7 +236,7 @@ struct TextButton buttons[MAX_UI] = {
         "main"
     },
     
-    {
+{
         "quit",
         (SCREEN_WIDTH - 200) / 2,
         ((SCREEN_HEIGHT - 100) / 2)+150,
@@ -197,6 +255,66 @@ struct TextButton buttons[MAX_UI] = {
         true,
         "QUIT",
         "main"
+    },
+    {
+        "title_play",
+        (SCREEN_WIDTH - 200) / 2,
+        ((SCREEN_HEIGHT - 100) / 2) - 20,
+        200,
+        100,
+        1.0f,
+        1.0f,
+        0, 255, 255, 255,
+        0, 20, 255, 255,
+        2,
+        2.0f,
+        24,
+        0, 0, 0, 255,
+        0, 0, 0, 255,
+        true,
+        true,
+        "PLAY",
+        "title"
+    },
+    {
+        "title_test",
+        (SCREEN_WIDTH - 200) / 2,
+        ((SCREEN_HEIGHT - 100) / 2) + 130,
+        200,
+        100,
+        1.0f,
+        1.0f,
+        0, 255, 255, 255,
+        0, 20, 255, 255,
+        2,
+        2.0f,
+        24,
+        0, 0, 0, 255,
+        0, 0, 0, 255,
+        true,
+        true,
+        "TEST MODE",
+        "title"
+    },
+    {
+        "title_quit",
+        (SCREEN_WIDTH - 200) / 2,
+        ((SCREEN_HEIGHT - 100) / 2) + 280,
+        200,
+        100,
+        1.0f,
+        1.0f,
+        0, 255, 255, 255,
+        0, 20, 255, 255,
+        2,
+        2.0f,
+        24,
+        0, 0, 0, 255,
+        0, 0, 0, 255,
+        true,
+        true,
+        "QUIT",
+        "title"
     }
 };
 
@@ -211,6 +329,17 @@ struct Box boxes[MAX_UI] = {
         1,
         false,
         "main"
+    },
+    {
+        "title_bg",
+        0,
+        0,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        0, 0, 255, 150,
+        1,
+        true,
+        "title"
     }
 };
 
@@ -277,6 +406,27 @@ struct TextLabel labels[MAX_UI] = {
         "0/0",
         "stats"
     },
+
+    {
+        "bestCombo",
+        UI_BORDER_OFFSET*2+380, 0,
+        60, UI_BORDER_OFFSET-2,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0,
+        0,
+        10,
+        0, 0, 0, 0,
+        255, 220, 80, 255,
+        0, 0,
+        true,
+        "BEST x0",
+        "stats"
+    },
 };
 
 // UI Init
@@ -306,6 +456,21 @@ void resetGame(void) {
     direction = "right";
     score = 0;
     level = 1;
+    eatStreak = 0;
+    bestStreak = 0;
+    bestFlashTimer = 0.0f;
+    hitStopTimer = 0.0f;
+    deathTimer = 0.0f;
+    deathTriggered = false;
+    timeTickPlayTimer = 0.0f;
+    timeTickActive = false;
+    timeReversePlayTimer = 0.0f;
+    timeReverseActive = false;
+    memset(seenAbility, 0, sizeof(seenAbility));
+    for (int b = 0; b < MAX_BANNERS; b++)
+        banners[b].visible = false;
+    shakeTimer = 0.0f;
+    flashTimer = 0.0f;
     scared = false;
     jumpscareActive = false;
     jumpscareTimer = 0.0f;
@@ -315,6 +480,11 @@ void resetGame(void) {
     poisonIncr = 0;
     poisonDebounce = false;
     poisonColorAlt = false;
+    superPoisonTick = 0;
+    superPoisoned = false;
+    superPoisonIncr = 0;
+    superPoisonDebounce = false;
+    superPoisonColorAlt = false;
     food_mult = 1.0f;
     mult_active = false;
     multTimer = 0.0f;
@@ -330,6 +500,16 @@ void resetGame(void) {
     timeTravelTimer = 0.0f;
     giant_active = false;
     giantTimer = 0.0f;
+    speed_active = false;
+    speedTimer = 0.0f;
+    speed_mult = 1.0f;
+    endurance_active = false;
+    enduranceTimer = 0.0f;
+    energy_mult = 1.0f;
+    lucky_active = false;
+    luckyTimer = 0.0f;
+    reverse_active = false;
+    reverseTimer = 0.0f;
     clearEffectFrames();
     clearInputQueue();
     player1.r = PLAYER_H_DEFAULT_R;
@@ -437,11 +617,25 @@ int main(void) {
     downSound = LoadSound("Assets/Down2.wav");
     upSound = LoadSound("Assets/Up2.wav");
     growSound = LoadSound("Assets/Grow2.wav");
-   // energyLevel = LoadSound("energyTexturenergy_level.wav");
+    energyLevel = LoadSound("Assets/energy_level.wav");
     levelUpSound = LoadSound("Assets/Level_Up2.wav");
     jumpScareSound = LoadSound("Assets/jump.wav");
     UI_Hover_Sfx = LoadSound("Assets/UI_Hover.wav");
     mult_sound = LoadSound("Assets/multi.wav");
+
+    speedSound = LoadSound("Assets/speed.wav");
+    healSound = LoadSound("Assets/heal.wav");
+    magnetSound = LoadSound("Assets/magnet.wav");
+    wardSound = LoadSound("Assets/ward.wav");
+    giantSound = LoadSound("Assets/giant.wav");
+    luckySound = LoadSound("Assets/lucky.wav");
+    enduranceSound = LoadSound("Assets/endurance.wav");
+    growAbilitySound = LoadSound("Assets/grow.wav");
+    combo_Sound = LoadSound("Assets/combo.wav");
+    poisonSound = LoadSound("Assets/poison.wav");
+    greedSound = LoadSound("Assets/greed.wav");
+    timeTickSound = LoadSound("Assets/time_tick.wav");
+    timeReverseSound = LoadSound("Assets/time_reverse.wav");
     //backgroundSound = LoadMusicStream("Ahh Music.wav");
 
     
@@ -459,25 +653,45 @@ int main(void) {
     
     while (!WindowShouldClose() && !quitRequested) {
         moveDelay = 1.0 / (double)player1.mvSpd; // Recompute each frame so sprint changes speed live
+
+        // Slow-mo death: the first frame the game ends kicks off the death
+        // animation once — an expanding shockwave and a settling fade.
+        if (deathTimer > 0.0f)
+            deathTimer -= GetFrameTime();
+        if (!game && !deathTriggered && !titleScreen)
+        {
+            deathTriggered = true;
+            deathTimer = 2.2f;
+            triggerScreenShake(16.0f);
+        }
+        if (bestFlashTimer > 0.0f)
+            bestFlashTimer -= GetFrameTime();
+
         if (!scared) {
-            if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) { lastPressedDir = "down";  queueDirection("down", downSound, true); }
-            if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { lastPressedDir = "up";    queueDirection("up", upSound, true); }
-            if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)){ lastPressedDir = "right"; queueDirection("right", rightSound, true); }
-            if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT)) { lastPressedDir = "left";  queueDirection("left", leftSound, true); }
+            // Warp-flip: while reversed, every key maps to the OPPOSITE tile.
+            char *upKey    = reverse_active ? "down"  : "up";
+            char *downKey  = reverse_active ? "up"    : "down";
+            char *rightKey = reverse_active ? "left"  : "right";
+            char *leftKey  = reverse_active ? "right" : "left";
+
+            if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) { lastPressedDir = downKey;  queueDirection(downKey,  downSound,  true); }
+            if (IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP))   { lastPressedDir = upKey;    queueDirection(upKey,    upSound,    true); }
+            if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT)){ lastPressedDir = rightKey; queueDirection(rightKey, rightSound, true); }
+            if (IsKeyPressed(KEY_A) || IsKeyPressed(KEY_LEFT)) { lastPressedDir = leftKey;  queueDirection(leftKey,  leftSound,  true); }
             if (game == true && !paused) {
                 // Hold-to-move: keep re-asserting the held direction (silent) so the
                 // snake keeps turning toward it while the key stays down. Only counts
                 // while it is STILL the player's most recent direction press — any
                 // newer tap disarms the hold so it can't yank control back.
                 char *heldDir = NULL;
-                if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) heldDir = "up";
-                else if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) heldDir = "down";
-                else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) heldDir = "right";
-                else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) heldDir = "left";
+                if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) heldDir = upKey;
+                else if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) heldDir = downKey;
+                else if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) heldDir = rightKey;
+                else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) heldDir = leftKey;
                 if (heldDir != NULL && lastPressedDir != NULL && strcmp(heldDir, lastPressedDir) == 0)
                     queueDirection(heldDir, (Sound){0}, false);
             }
-            if(IsKeyPressed(KEY_ESCAPE)) {
+            if(IsKeyPressed(KEY_ESCAPE) && !titleScreen) {
                 paused = !paused;
                 
                 if (mainUIHiden == true) {
@@ -490,15 +704,15 @@ int main(void) {
             }
         if (IsKeyDown(KEY_LEFT_SHIFT)) {
                 if (game == true && !paused && player1.stomach > 0.0f) {
-                    player1.mvSpd = 15.0f;
-                    player1.stomach -= SPRINT_BURN * GetFrameTime(); // burst speed, frame-rate independent
+                    player1.mvSpd = 15.0f * speed_mult;
+                    player1.stomach -= SPRINT_BURN * GetFrameTime() * energy_mult; // burst speed, frame-rate independent
                     sprint_active = true;
                 } else {
-                    player1.mvSpd = 10.0f;
+                    player1.mvSpd = 10.0f * speed_mult;
                     sprint_active = false;
                 }
             } else {
-                player1.mvSpd = 10.0f;
+                player1.mvSpd = 10.0f * speed_mult;
                 sprint_active = false;
             }
         }
@@ -507,6 +721,9 @@ if (game == true && !paused) {
             UpdateMusicStream(backgroundSound); 
             onMultiplier();
             onMagnet();
+            onSpeed();
+            onEndurance();
+            onLucky();
             onGiant();
             // Reset after a warp lands so it doesn't drain its accumulated
             // time as a burst of instant movement steps.
@@ -515,7 +732,47 @@ if (game == true && !paused) {
                 moveTimer = 0.0;
                 clearMoveTimer = false;
             }
-            moveTimer += GetFrameTime();
+            // Hit-stop: while the timer is hot the world holds its breath — the move
+            // register pauses too, so there's no catch-up burst after.
+            if (hitStopTimer > 0.0f)
+            {
+                hitStopTimer -= GetFrameTime();
+            }
+            else
+            {
+                moveTimer += GetFrameTime();
+            }
+            if (timeReverseActive)
+            {
+                timeReversePlayTimer += GetFrameTime();
+                if (timeReversePlayTimer >= 1.2f)
+                {
+                    StopSound(timeReverseSound);
+                    timeReverseActive = false;
+                }
+                else
+                {
+                    float tv = timeReversePlayTimer / 1.2f;
+                    SetSoundPitch(timeReverseSound, 1.8f - 1.2f * tv);
+                    SetSoundVolume(timeReverseSound, 1.0f - tv * tv);
+                }
+            }
+
+            if (timeTickActive)
+            {
+                timeTickPlayTimer += GetFrameTime();
+                if (timeTickPlayTimer >= 0.9f)
+                {
+                    StopSound(timeTickSound);
+                    timeTickActive = false;
+                }
+                else
+                {
+                    float tt = timeTickPlayTimer / 0.9f;
+                    SetSoundPitch(timeTickSound, 0.6f + 1.2f * tt);
+                    SetSoundVolume(timeTickSound, 1.0f - tt * tt);
+                }
+            }
             if (moveTimer >= moveDelay && !warp_active) {
                 moveTimer -= moveDelay;
                 if (scared) {
@@ -584,8 +841,10 @@ if (game == true && !paused) {
                 checkSelfCollision();
             }
         } else {
-            if (IsKeyPressed(KEY_R)) {
+            if (!titleScreen && IsKeyPressed(KEY_R)) {
                 resetGame();
+                if (testMode)
+                    loadTestBoard();
                 moveTimer = 0.0;
             }
         }
@@ -605,6 +864,16 @@ if (game == true && !paused) {
                           
         float screenShakeX = 0.0f;
         float screenShakeY = 0.0f;
+
+        if (shakeTimer > 0.0f)
+        {
+            shakeTimer -= GetFrameTime();
+            float decay = shakeTimer / 0.12f;
+            if (decay < 0.0f)
+                decay = 0.0f;
+            screenShakeX = (float)GetRandomValue(-1, 1) * shakePower * decay;
+            screenShakeY = (float)GetRandomValue(-1, 1) * shakePower * decay;
+        }
         
         if (scared)
         {
@@ -612,7 +881,9 @@ if (game == true && !paused) {
             headDrawY += (float)GetRandomValue(-2, 2);
         }
         whilePoisoned();
+        whileSuperPoisoned();
         updateScaredMode();
+        updateReverseMode();
         updateParticles();
         updateGroundParticles();
         updateGreedAura();
@@ -627,9 +898,13 @@ if (game == true && !paused) {
         updateHangryEffect();
         updateEnergyBarSparkles();
         updateSprintEffects();
+        updateNearlyFullPulse();
+        if (flashTimer > 0.0f)
+            flashTimer -= GetFrameTime();
         updateSplats();
         updateJumpscare();
         updateEnergyPopups();
+        updateBanners();
         updateEffectFrames();
         updateBodyRipple();
         //updateTempLabels();
@@ -669,8 +944,29 @@ if (game == true && !paused) {
                 (Vector2){0,0},
                 gridTint
             );
+
+            // Level-up flash — a brief cold pulse across the whole board.
+            if (flashTimer > 0.0f)
+            {
+                float flashAlpha = 200.0f *
+                    (flashTimer / 0.30f);
+                if (flashAlpha > 200.0f)
+                    flashAlpha = 200.0f;
+                DrawRectangle(
+                    0,
+                    0,
+                    SCREEN_WIDTH,
+                    SCREEN_HEIGHT,
+                    (Color){
+                        flashColor.r,
+                        flashColor.g,
+                        flashColor.b,
+                        (unsigned char)flashAlpha
+                    }
+                );
+            }
             
-            if (game == true) {
+            if (game == true || titleScreen) {
                 renderSplats();
                 renderFoods();
                 renderGroundParticles();
@@ -679,6 +975,8 @@ if (game == true && !paused) {
                 renderWardShield(headDrawX, headDrawY);
                 renderGiantAura(headDrawX, headDrawY);
                 renderPlayerBodies(t, headDrawX, headDrawY);
+                renderSpeedAura(headDrawX, headDrawY);
+                renderLuckyAura(headDrawX, headDrawY);
                 
                 // Aim the head along the real neck (head toward body[0]) so the back
                 // of the sprite always lands on the body, even mid-corner.
@@ -753,6 +1051,12 @@ if (game == true && !paused) {
                     headColor = hangryTint(headColor);
                 else if (giant_active)
                     headColor = giantTint(headColor);
+                else if (reverse_active)
+                    headColor = reverseTint(headColor);
+                else if (speed_active && !poisoned && !superPoisoned)
+                    headColor = speedTint(headColor);
+                else if (lucky_active && !poisoned && !superPoisoned)
+                    headColor = luckyTint(headColor);
 
                 // Hangry! The greed buff puts the snake in a foul mood
                 Texture2D activeHeadTexture =
@@ -789,6 +1093,7 @@ if (game == true && !paused) {
                 renderEffectFrames();
                 updateUI();
                 renderTempLabels();
+                renderBanners();
                 int mX = GetMouseX();
                 int mY = GetMouseY();
 
@@ -811,15 +1116,50 @@ if (game == true && !paused) {
                         hideUI("main");
                         paused = false;
                     }
+                    if (strcmp(cur_btn, "title_play") == 0) {
+                        titleScreen = false;
+                        testMode = false;
+                        resetGame();
+                        hideUI("title");
+                        moveTimer = 0.0;
+                    }
+                    if (strcmp(cur_btn, "title_test") == 0) {
+                        titleScreen = false;
+                        testMode = true;
+                        resetGame();
+                        loadTestBoard();
+                        hideUI("title");
+                        moveTimer = 0.0;
+                    }
+                    if (strcmp(cur_btn, "title_quit") == 0) {
+                        quitRequested = true;
+                    }
                 }
-                starve();
+                if (!titleScreen)
+                    starve();
                 
                 //DrawText(TextFormat("SCORE: %d", score), 0, 0, UI_BORDER_OFFSET-2, GREEN);
                // DrawText(TextFormat("LEVEL: %d", level), UI_BORDER_OFFSET*2+50, 0, UI_BORDER_OFFSET-2, WHITE);
-            } else {
+            } else if (!titleScreen) {
+                // Slow-mo death: the deathTimer counts down from 2.2s. The
+                // world keeps drawing underneath while a shockwave ring swells
+                // out from the snake and a fog settles over the board.
+                float deathT = deathTimer / 2.2f;
+                if (deathT < 0.0f)
+                    deathT = 0.0f;
+
+                float fx = player1.x + player1.size / 2.0f;
+                float fy = player1.y + player1.size / 2.0f;
+
+                float waveR = (1.0f - deathT) * 500.0f;
+                DrawCircleLines((int)fx, (int)fy, waveR, (Color){255, 60, 60, (unsigned char)(30.0f + 200.0f * deathT)});
+                DrawCircleLines((int)fx, (int)fy, waveR * 0.6f, (Color){255, 120, 120, (unsigned char)(20.0f + 160.0f * deathT)});
+
                 DrawText("GAME OVER", SCREEN_WIDTH/2 - MeasureText("GAME OVER", 30)/2, SCREEN_HEIGHT/2 - 40, 30, RED);
                 DrawText(TextFormat("FINAL SCORE: %d", score), SCREEN_WIDTH/2 - MeasureText(TextFormat("FINAL SCORE: %d", score), 20)/2, SCREEN_HEIGHT/2, 20, WHITE);
-                DrawText("Press [R] to Replay", SCREEN_WIDTH/2 - MeasureText("Press [R] to Replay", 16)/2, SCREEN_HEIGHT/2 + 40, 16, WHITE);
+                if (deathT < 0.25f)
+                    DrawText("Press [R] to Replay", SCREEN_WIDTH/2 - MeasureText("Press [R] to Replay", 16)/2, SCREEN_HEIGHT/2 + 40, 16, WHITE);
+                DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, (Color){5, 5, 10, (unsigned char)(120.0f * (1.0f - deathT))});
             }
             EndMode2D();
 
@@ -889,6 +1229,19 @@ if (game == true && !paused) {
     UnloadSound(levelUpSound);
     UnloadSound(UI_Hover_Sfx);
     UnloadSound(mult_sound);
+    UnloadSound(speedSound);
+    UnloadSound(healSound);
+    UnloadSound(magnetSound);
+    UnloadSound(wardSound);
+    UnloadSound(giantSound);
+    UnloadSound(luckySound);
+    UnloadSound(enduranceSound);
+    UnloadSound(growAbilitySound);
+    UnloadSound(combo_Sound);
+    UnloadSound(poisonSound);
+    UnloadSound(greedSound);
+    UnloadSound(timeTickSound);
+    UnloadSound(timeReverseSound);
     UnloadMusicStream(backgroundSound);
     CloseAudioDevice();
     CloseWindow();

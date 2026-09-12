@@ -11,13 +11,17 @@
 #include "math.h"
 #include "Definitions.h"
 
-// The player's level needed before a fruit of this threat is allowed to
-// spawn at all. threat 0 fruits are always available.
+// The player's level needed before a fruit of this tier is allowed to spawn
+// at all. tier 0 fruits are always available. Tiers ramp up so abilities AND
+// hazards are slowly introduced as the player clears boards: a couple of
+// starter abilities from level 1, then fresh families at 3/5/7 and the top
+// of the ladder by level 10.
 int threatLevelUnlock(int threat)
 {
-    if (threat >= 3) return 8;   // ghost apple — severe
-    if (threat == 2) return 5;   // poison — dangerous
-    return 3;                    // threat 1 — risky
+    if (threat >= 4) return 10;  // late-game specials — super poison, grow, best variants
+    if (threat >= 3) return 7;   // ward/time/ghost tier
+    if (threat == 2) return 5;   // mult/giant/lucky + poison/warp tier
+    return 3;                    // threat 1 — endurance/risk tier
 }
 
 char* getRandomFruit() {
@@ -81,6 +85,41 @@ bool isTileOccupied(int x, int y)
     return false;
 }
 
+// True if a PLAYER_SIZE box at (x,y) overlaps the snake's head or any live
+// body segment — used to keep magnetized fruit from clipping under the snake.
+bool overlapsSnake(int x, int y)
+{
+    Rectangle foodRect = {
+        (float)x,
+        (float)y,
+        (float)PLAYER_SIZE,
+        (float)PLAYER_SIZE
+    };
+
+    Rectangle headRect = {
+        (float)player1.x,
+        (float)player1.y,
+        (float)PLAYER_SIZE,
+        (float)PLAYER_SIZE
+    };
+    if (CheckCollisionRecs(foodRect, headRect))
+        return true;
+
+    for (int i = 0; i < player1.length && i < MAX_P_LENGTH; i++)
+    {
+        Rectangle segRect = {
+            (float)bodies[i].x,
+            (float)bodies[i].y,
+            (float)PLAYER_SIZE,
+            (float)PLAYER_SIZE
+        };
+        if (CheckCollisionRecs(foodRect, segRect))
+            return true;
+    }
+
+    return false;
+}
+
 void loadFoods(void) {
     int arralen = sizeof(powerUps) / sizeof(powerUps[0]);
     bool alreadyLoaded = false;
@@ -107,9 +146,77 @@ void loadFoods(void) {
             } while (isTileOccupied(item.x, item.y));
             foods[i] = (struct Food)item;
             timeSnapshot[i] = foods[i];
+
+            // First-time toast: when a never-seen ability rolls into the pool
+            // (or the level-1 opening hand deals it), name it under the level
+            // banner so new toys teach themselves.
+            if (strcmp(item.ability, "Fruit") != 0)
+            {
+                for (int j = 0; j < arralen; j++)
+                {
+                    if (strcmp(powerUps[j].name, item.name) == 0)
+                    {
+                        if (!seenAbility[j])
+                        {
+                            seenAbility[j] = 1;
+                            spawnBannerAt(
+                                TextFormat("NEW: %s!", item.name),
+                                (Color){item.r, item.g, item.b, 255},
+                                1.5f,
+                                (float)SCREEN_HEIGHT / 2.0f + 80.0f,
+                                18
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+
          //   printf("%s -> %s\n", item.name, item.ability);
             fruitID++;
         }
+
+        // Opening hand — the very first board always deals the power fantasy
+        // immediately: a magnet, a speed charge and a heal sitting on the
+        // grid. Three quick wins = instant dopamine before any grinding.
+        if (level == 1)
+        {
+            const char *hand[3] = {
+                "apple of magnetism",
+                "orange of speed",
+                "apple of healing"
+            };
+            for (int h = 0; h < 3; h++)
+            {
+                for (int j = 0; j < arralen; j++)
+                {
+                    if (strcmp(powerUps[j].name, hand[h]) == 0)
+                    {
+                        struct Food deal = powerUps[j];
+                        do {
+                            deal.x = UI_BORDER_OFFSET+GetRandomValue(0, ((SCREEN_WIDTH - UI_BORDER_OFFSET*2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
+                            deal.y = UI_BORDER_OFFSET+GetRandomValue(0, ((SCREEN_HEIGHT - UI_BORDER_OFFSET*2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
+                        } while (isTileOccupied(deal.x, deal.y));
+                        foods[h] = (struct Food)deal;
+                        timeSnapshot[h] = foods[h];
+
+                        if (!seenAbility[j])
+                        {
+                            seenAbility[j] = 1;
+                            spawnBannerAt(
+                                TextFormat("NEW: %s!", deal.name),
+                                (Color){deal.r, deal.g, deal.b, 255},
+                                1.5f,
+                                (float)SCREEN_HEIGHT / 2.0f + 80.0f,
+                                18
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         // Remember how many plain fruits this level started with
         fruitsTotalThisLevel = 0;
         for (int i = 0; i < FRUIT_COUNT; i++)
@@ -127,6 +234,82 @@ void loadFoods(void) {
     }
 }
 
+void loadTestBoard(void)
+{
+    // Test-mode bench: place one fruit of every ability so every pickup,
+    // sound, hazard, and banner can be bitten through in a couple of seconds.
+    // A few plain apples keep the belly topped up between combo tests.
+    int arralen = sizeof(powerUps) / sizeof(powerUps[0]);
+
+    memset(foods, 0, sizeof(struct Food) * FRUIT_COUNT);
+    for (int i = 0; i < FRUIT_COUNT; i++)
+        foods[i].active = false;
+
+    const char *testAbilities[] = {
+        "Speed",      "Endurance", "Giant",     "Magnet",
+        "Mult",       "Ward",      "Heal",      "Lucky",
+        "Grow",       "Time",      "Ghost",     "Warp",
+        "Poison",     "SuperPoison"
+    };
+
+    int next = 0;
+    for (unsigned int a = 0;
+         a < sizeof(testAbilities) / sizeof(testAbilities[0]) &&
+         next < FRUIT_COUNT;
+         a++)
+    {
+        struct Food pick;
+        bool found = false;
+        for (int j = 0; j < arralen; j++)
+        {
+            if (strcmp(powerUps[j].ability, testAbilities[a]) == 0)
+            {
+                pick = powerUps[j];
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            continue;
+
+        pick.active = true;
+        do {
+            pick.x = UI_BORDER_OFFSET + GetRandomValue(0, ((SCREEN_WIDTH - UI_BORDER_OFFSET * 2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
+            pick.y = UI_BORDER_OFFSET + GetRandomValue(0, ((SCREEN_HEIGHT - UI_BORDER_OFFSET * 2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
+        } while (isTileOccupied(pick.x, pick.y) || overlapsSnake(pick.x, pick.y));
+
+        foods[next] = pick;
+        timeSnapshot[next] = foods[next];
+        next++;
+    }
+
+    // Fuel: a few plain apples so the belly can keep up.
+    for (int a = 0; a < 8 && next < FRUIT_COUNT; a++)
+    {
+        struct Food item = powerUps[0]; // "apple"
+        item.active = true;
+        do {
+            item.x = UI_BORDER_OFFSET + GetRandomValue(0, ((SCREEN_WIDTH - UI_BORDER_OFFSET * 2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
+            item.y = UI_BORDER_OFFSET + GetRandomValue(0, ((SCREEN_HEIGHT - UI_BORDER_OFFSET * 2) / PLAYER_SIZE) - 1) * PLAYER_SIZE;
+        } while (isTileOccupied(item.x, item.y) || overlapsSnake(item.x, item.y));
+
+        foods[next] = item;
+        timeSnapshot[next] = item;
+        next++;
+    }
+
+    fruitsTotalThisLevel = 0;
+    for (int i = 0; i < FRUIT_COUNT; i++)
+    {
+        if (foods[i].active && strcmp(foods[i].ability, "Fruit") == 0)
+            fruitsTotalThisLevel++;
+    }
+    timeStartX = player1.x;
+    timeStartY = player1.y;
+    timeStartDirection = direction;
+    timeFruitTotal = fruitsTotalThisLevel;
+}
+
 void renderFoods(void) {
     for (int i = 0; i < FRUIT_COUNT; i++) {
         if (foods[i].active == true) {
@@ -140,6 +323,155 @@ void renderFoods(void) {
                 DrawRectangle(foods[i].x + offset, foods[i].y + offset, foods[i].size, foods[i].size, (Color){foods[i].r, foods[i].g, foods[i].b, foods[i].a});
                 Rectangle rec = (struct Rectangle){(float)foods[i].x + offset, foods[i].y + offset, (float)foods[i].size, (float)foods[i].size};
                 DrawRectangleLinesEx(rec, 2.0, GetColor(POISON_COLOR));
+            } else if (strcmp(foods[i].ability, "SuperPoison") == 0) {
+                // Mutated poison apple — blazing red with a bright green stem,
+                // breathing toxic green aura.
+                int offset = (PLAYER_SIZE - foods[i].size) / 2;
+                float cx = foods[i].x + PLAYER_SIZE / 2.0f;
+                float cy = foods[i].y + PLAYER_SIZE / 2.0f;
+                float pulse = 0.5f + 0.5f * sinf(GetTime() * 6.0f + (float)i * 1.9f);
+
+                // Radiating green poison aura (two breathing rings)
+                DrawCircleGradient(
+                    (Vector2){ cx, cy },
+                    26.0f + pulse * 8.0f,
+                    (Color){ 0, 255, 0, (unsigned char)(38 + 26.0f * pulse) },
+                    (Color){ 0, 220, 0, 0 }
+                );
+                DrawCircleGradient(
+                    (Vector2){ cx, cy },
+                    14.0f + pulse * 3.0f,
+                    (Color){ 60, 255, 60, (unsigned char)(55 + 30.0f * pulse) },
+                    (Color){ 0, 200, 0, 0 }
+                );
+
+                // Blazing red body
+                DrawRectangle(foods[i].x + offset, foods[i].y + offset, foods[i].size, foods[i].size, (Color){foods[i].r, foods[i].g, foods[i].b, foods[i].a});
+                Rectangle rec = (struct Rectangle){(float)foods[i].x + offset, foods[i].y + offset, (float)foods[i].size, (float)foods[i].size};
+                DrawRectangleLinesEx(rec, 2.0, (Color){0, 255, 0, 255});
+
+                // Bright green stem + leaf so it reads as the super variant
+                DrawRectangleRounded(
+                    (Rectangle){ cx - 2.0f, cy - foods[i].size / 2.0f - 4.0f, 4.0f, 7.0f },
+                    0.5f,
+                    4,
+                    (Color){ 40, 255, 60, 255 }
+                );
+                DrawCircle(
+                    cx + foods[i].size * 0.22f,
+                    cy - foods[i].size / 2.0f - 3.0f,
+                    3.5f,
+                    (Color){ 90, 255, 110, 255 }
+                );
+            } else if (strcmp(foods[i].ability, "Speed") == 0) {
+                // Plasma-charged orange — zesty body crackling with neon blue
+                // lightning radiating outward and a breathing plasma glow.
+                float cx = foods[i].x + PLAYER_SIZE / 2.0f;
+                float cy = foods[i].y + PLAYER_SIZE / 2.0f;
+                float pulse = 0.5f + 0.5f * sinf(GetTime() * 7.0f + (float)i * 1.3f);
+
+                // Radiating neon blue plasma glow (two breathing rings)
+                DrawCircleGradient(
+                    (Vector2){ cx, cy },
+                    28.0f + pulse * 9.0f,
+                    (Color){ 60, 180, 255, (unsigned char)(42 + 30.0f * pulse) },
+                    (Color){ 20, 90, 255, 0 }
+                );
+                DrawCircleGradient(
+                    (Vector2){ cx, cy },
+                    15.0f + pulse * 4.0f,
+                    (Color){ 120, 220, 255, (unsigned char)(60 + 34.0f * pulse) },
+                    (Color){ 40, 120, 255, 0 }
+                );
+
+                // Radially radiating jagged lightning bolts
+                for (int bolt = 0; bolt < 5; bolt++)
+                {
+                    float angle = (float)(bolt / 5.0f * 360.0f) * DEG2RAD
+                                + (float)GetRandomValue(-14, 14) * DEG2RAD;
+                    float flare = 0.55f + 0.45f * sinf(GetTime() * 13.0f + bolt * 2.4f + (float)i);
+                    float length = (18.0f + pulse * 10.0f) * flare;
+                    float px = cx, py = cy;
+                    int spikes = 3 + GetRandomValue(0, 2);
+                    for (int s = 0; s <= spikes; s++)
+                    {
+                        float t = (float)s / spikes;
+                        float nx = cx + cosf(angle) * length * t
+                                 + (s == spikes ? 0.0f : (float)GetRandomValue(-7, 7));
+                        float ny = cy + sinf(angle) * length * t
+                                 + (s == spikes ? 0.0f : (float)GetRandomValue(-7, 7));
+                        DrawLineEx(
+                            (Vector2){ px, py },
+                            (Vector2){ nx, ny },
+                            2.2f,
+                            (Color){ 120, 220, 255, (unsigned char)(180.0f * flare) }
+                        );
+                        px = nx; py = ny;
+                    }
+                }
+
+                // Simple square body matching the normal orange fruit, with the
+                // plasma blue kept purely as its glow + crackle.
+                int offset = (PLAYER_SIZE - foods[i].size) / 2;
+                DrawRectangle(
+                    foods[i].x + offset,
+                    foods[i].y + offset,
+                    foods[i].size,
+                    foods[i].size,
+                    (Color){ (unsigned char)foods[i].r, (unsigned char)foods[i].g, (unsigned char)foods[i].b, 255 }
+                );
+                Rectangle rec = (struct Rectangle){
+                    (float)foods[i].x + offset,
+                    (float)foods[i].y + offset,
+                    (float)foods[i].size,
+                    (float)foods[i].size
+                };
+                DrawRectangleLinesEx(rec, 2.0, (Color){60, 180, 255, 255});
+            } else if (strcmp(foods[i].ability, "Endurance") == 0) {
+                // Glowing yellow banana — simple square body radiating
+                // plus-shaped endurance particles and a breathing golden glow.
+                int offset = (PLAYER_SIZE - foods[i].size) / 2;
+                float cx = foods[i].x + PLAYER_SIZE / 2.0f;
+                float cy = foods[i].y + PLAYER_SIZE / 2.0f;
+                float pulse = 0.5f + 0.5f * sinf(GetTime() * 6.0f + (float)i * 1.1f);
+
+                // Breathing golden glow (two rings)
+                DrawCircleGradient(
+                    (Vector2){ cx, cy },
+                    26.0f + pulse * 8.0f,
+                    (Color){ 255, 220, 60, (unsigned char)(40 + 30.0f * pulse) },
+                    (Color){ 255, 180, 0, 0 }
+                );
+                DrawCircleGradient(
+                    (Vector2){ cx, cy },
+                    14.0f + pulse * 3.0f,
+                    (Color){ 255, 245, 180, (unsigned char)(55 + 34.0f * pulse) },
+                    (Color){ 255, 200, 40, 0 }
+                );
+
+                // Radiating plus-shaped endurance particles
+                for (int p = 0; p < 6; p++)
+                {
+                    float angle = (float)(p / 6.0f * 360.0f) * DEG2RAD
+                                + GetTime() * 1.2f + (float)i * 0.9f;
+                    float pace = 0.5f + 0.5f * sinf(GetTime() * 9.0f + p * 2.1f);
+                    float radius = (11.0f + pulse * 6.0f) + pace * 6.0f;
+                    float px = cx + cosf(angle) * radius;
+                    float py = cy + sinf(angle) * radius;
+
+                    DrawText(
+                        "+",
+                        (int)px - 4,
+                        (int)py - 7,
+                        14,
+                        (Color){ 255, 250, 200, (unsigned char)(170 + 85.0f * pulse) }
+                    );
+                }
+
+                // Simple banana-yellow square body like the normal fruit
+                DrawRectangle(foods[i].x + offset, foods[i].y + offset, foods[i].size, foods[i].size, (Color){foods[i].r, foods[i].g, foods[i].b, foods[i].a});
+                Rectangle rec = (struct Rectangle){(float)foods[i].x + offset, foods[i].y + offset, (float)foods[i].size, (float)foods[i].size};
+                DrawRectangleLinesEx(rec, 2.0, (Color){255, 245, 180, 255});
             } else if (strcmp(foods[i].ability, "Ghost") == 0) {
                     int offset = (PLAYER_SIZE - foods[i].size) / 2;
 
@@ -425,6 +757,98 @@ void renderFoods(void) {
                             }
                         );
                     }
+                } else if (strcmp(foods[i].ability, "Lucky") == 0) {
+                    // Lucky fruit — emerald clover / gold horseshoe with a
+                    // breathing coin of fortune aura and orbiting coins.
+                    int offset = (PLAYER_SIZE - foods[i].size) / 2;
+                    float cx = foods[i].x + PLAYER_SIZE / 2.0f;
+                    float cy = foods[i].y + PLAYER_SIZE / 2.0f;
+                    float pulse = 0.5f + 0.5f * sinf(GetTime() * 7.0f + (float)i * 1.2f);
+
+                    // Breathing emerald/gold glow
+                    DrawCircleGradient(
+                        (Vector2){ cx, cy },
+                        26.0f + pulse * 8.0f,
+                        (Color){ 255, 220, 60, (unsigned char)(38 + 26.0f * pulse) },
+                        (Color){ 40, 210, 90, 0 }
+                    );
+                    DrawCircleGradient(
+                        (Vector2){ cx, cy },
+                        14.0f + pulse * 3.0f,
+                        (Color){ 255, 245, 150, (unsigned char)(55 + 30.0f * pulse) },
+                        (Color){ 60, 230, 110, 0 }
+                    );
+
+                    // Orbiting coin sparks
+                    for (int coin = 0; coin < 4; coin++)
+                    {
+                        float angle = (float)(coin / 4.0f * 360.0f) * DEG2RAD
+                                    + GetTime() * 2.2f + (float)i * 0.7f;
+                        float radius = 15.0f + pulse * 5.0f;
+                        float px = cx + cosf(angle) * radius;
+                        float py = cy + sinf(angle) * radius;
+                        DrawCircle(
+                            px, py, 2.0f + pulse,
+                            (Color){ 255, 240, 130, (unsigned char)(170 + 85.0f * pulse) }
+                        );
+                    }
+
+                    DrawRectangle(foods[i].x + offset, foods[i].y + offset, foods[i].size, foods[i].size, (Color){foods[i].r, foods[i].g, foods[i].b, foods[i].a});
+                    Rectangle rec = (struct Rectangle){(float)foods[i].x + offset, foods[i].y + offset, (float)foods[i].size, (float)foods[i].size};
+                    DrawRectangleLinesEx(rec, 2.0, (Color){255, 240, 130, 255});
+                } else if (strcmp(foods[i].ability, "Grow") == 0) {
+                    // Seed of renewal — verdant glow with a rising sprout glyph
+                    int offset = (PLAYER_SIZE - foods[i].size) / 2;
+                    float cx = foods[i].x + PLAYER_SIZE / 2.0f;
+                    float cy = foods[i].y + PLAYER_SIZE / 2.0f;
+                    float pulse = 0.5f + 0.5f * sinf(GetTime() * 5.0f + (float)i * 1.6f);
+
+                    DrawCircleGradient(
+                        (Vector2){ cx, cy },
+                        20.0f + pulse * 7.0f,
+                        (Color){ 90, 220, 110, (unsigned char)(40 + 28.0f * pulse) },
+                        (Color){ 30, 120, 50, 0 }
+                    );
+
+                    // Sprout: stem + two leaves climbing out of the square
+                    DrawLineEx(
+                        (Vector2){ cx, cy + foods[i].size / 2.0f },
+                        (Vector2){ cx, cy - foods[i].size / 2.0f - 6.0f },
+                        2.5f,
+                        (Color){ 160, 255, 170, 255 }
+                    );
+                    DrawCircle(cx + 6.0f, cy - foods[i].size / 2.0f - 6.0f, 3.5f, (Color){ 140, 255, 150, 255 });
+                    DrawCircle(cx - 6.0f, cy - foods[i].size / 2.0f - 6.0f, 3.5f, (Color){ 100, 235, 120, 255 });
+
+                    DrawRectangle(foods[i].x + offset, foods[i].y + offset, foods[i].size, foods[i].size, (Color){foods[i].r, foods[i].g, foods[i].b, foods[i].a});
+                    Rectangle rec = (struct Rectangle){(float)foods[i].x + offset, foods[i].y + offset, (float)foods[i].size, (float)foods[i].size};
+                    DrawRectangleLinesEx(rec, 2.0, (Color){160, 255, 170, 255});
+                } else if (strcmp(foods[i].ability, "Warp") == 0) {
+                    // Warp fruit — glitchy square with RGB-split echoes that
+                    // jitter, so the "reversal" reads as a corrupted reality.
+                    int offset = (PLAYER_SIZE - foods[i].size) / 2;
+                    int jit = GetRandomValue(-3, 3);
+
+                    // Red and blue split shadows sliding sideways
+                    DrawRectangle(
+                        foods[i].x + offset + jit,
+                        foods[i].y + offset,
+                        foods[i].size,
+                        foods[i].size,
+                        (Color){ 255, 0, 60, 110 }
+                    );
+                    DrawRectangle(
+                        foods[i].x + offset - jit,
+                        foods[i].y + offset,
+                        foods[i].size,
+                        foods[i].size,
+                        (Color){ 0, 160, 255, 110 }
+                    );
+
+                    // Real body
+                    DrawRectangle(foods[i].x + offset, foods[i].y + offset, foods[i].size, foods[i].size, (Color){foods[i].r, foods[i].g, foods[i].b, foods[i].a});
+                    Rectangle rec = (struct Rectangle){(float)foods[i].x + offset, foods[i].y + offset, (float)foods[i].size, (float)foods[i].size};
+                    DrawRectangleLinesEx(rec, 2.0, (Color){180, 60, 255, 255});
                 }
             }
         }
@@ -439,20 +863,92 @@ void onPlayerEatingFood(float energyConsumed, bool isAbility)
 {
     if (energyConsumed > 0)
     {
+        // The eater blip pitches with the prize — bigger fruits land a higher
+        // tone, so energy value is audible before the popup even lands.
+        float blip = 1.0f + energyConsumed * 0.04f;
+        if (blip > 1.35f)
+            blip = 1.35f;
+        SetSoundPitch(energyLevel, blip);
+
         // Create popup BEFORE changing the stomach
         spawnEnergyPopup(energyConsumed, isAbility);
 
         player1.stomach +=
             energyConsumed * (float)food_mult;
+
+        // Lucky charge: a lucky bite lands an identical second deposit, so a
+        // crit fruit pays out double. The extra popup reads as a "x2!".
+        if (lucky_active && (float)GetRandomValue(0, 100) < LUCKY_CHANCE * 100.0f)
+        {
+            player1.stomach +=
+                energyConsumed * (float)food_mult;
+            spawnEnergyPopup(energyConsumed, isAbility);
+        }
+
+        // Eat-streak combo: every 5th clean bite pays a bonus splash of energy
+        // and shouts about it. The pitch keeps climbing as streaks stack up.
+        eatStreak++;
+        if (eatStreak > bestStreak)
+        {
+            bestStreak = eatStreak;
+            bestFlashTimer = BEST_FLASH_TIME;
+        }
+        if (eatStreak % COMBO_EVERY == 0)
+        {
+            int tier = eatStreak / COMBO_EVERY;
+            if (tier > 5)
+                tier = 5;
+            player1.stomach += COMBO_BONUS;
+            spawnEnergyPopup(COMBO_BONUS, false);
+            spawnTextBanner(
+                TextFormat("COMBO x%d!", eatStreak),
+                (Color){ 255, 220, 80, 255 },
+                1.15f
+            );
+            SetSoundPitch(combo_Sound, 0.9f + 0.08f * (float)tier);
+            PlaySound(combo_Sound);
+        }
     }
     else if (energyConsumed < 0)
     {
         player1.prevlen = player1.length;
 
         player1.length += energyConsumed;
+
+        // Hazards (poison/super-poison/ghost) drain segment count — never
+        // below the head, no matter how short the snake is.
+        if (player1.length < 1)
+            player1.length = 1;
     }
 
     updatePlayerLength();
+}
+
+void onLucky(void)
+{
+    // Lucky charge ticks down; while active, bites have a coin-flip to double.
+    if (!lucky_active)
+        return;
+
+    luckyTimer -= GetFrameTime();
+
+    if (luckyTimer <= 0.0f)
+    {
+        luckyTimer = 0.0f;
+        lucky_active = false;
+        return;
+    }
+
+    // Faint golden coin motes trail off the snake so the charge reads live
+    if (GetRandomValue(0, 2) == 0 && player1.length > 0)
+    {
+        int idx = GetRandomValue(0, player1.length - 1);
+        spawnGreedSparkle(
+            bodies[idx].x + bodies[idx].size / 2.0f,
+            bodies[idx].y + bodies[idx].size / 2.0f,
+            (Color){ 255, 220, 80, 255 }
+        );
+    }
 }
 
 void onMultiplier(void) {
@@ -508,8 +1004,16 @@ void onMagnet(void)
         float step = MAGNET_SPEED * GetFrameTime();
         if (dist < step) step = dist; // Don't overshoot the player
 
-        foods[i].x += (int)(dx / dist * step);
-        foods[i].y += (int)(dy / dist * step);
+        int moveX = (int)(dx / dist * step);
+        int moveY = (int)(dy / dist * step);
+
+        // Never let the fruit slide under the snake — if this step would land
+        // on the head or a body segment, park it right where it is instead.
+        if (overlapsSnake(foods[i].x + moveX, foods[i].y + moveY))
+            continue;
+
+        foods[i].x += moveX;
+        foods[i].y += moveY;
 
         // Keep magnetized fruit inside the playable area
         if (foods[i].x < UI_BORDER_OFFSET) foods[i].x = UI_BORDER_OFFSET;
@@ -518,6 +1022,73 @@ void onMagnet(void)
             foods[i].x = SCREEN_WIDTH - UI_BORDER_OFFSET - foods[i].size;
         if (foods[i].y > SCREEN_HEIGHT - UI_BORDER_OFFSET - foods[i].size)
             foods[i].y = SCREEN_HEIGHT - UI_BORDER_OFFSET - foods[i].size;
+    }
+}
+
+void onSpeed(void)
+{
+    // Speed charge ticks down; while active the snake runs at 1.5x speed.
+    if (!speed_active)
+    {
+        speed_mult = 1.0f;
+        return;
+    }
+
+    speedTimer -= GetFrameTime();
+
+    if (speedTimer <= 0.0f)
+    {
+        speedTimer = 0.0f;
+        speed_active = false;
+        speed_mult = 1.0f;
+        return;
+    }
+
+    speed_mult = SPEED_MULT;
+
+    // Trailing neon-blue lightning motes spark off random body segments every
+    // frame, so the snake visibly crackles while it bolts around.
+    if (GetRandomValue(0, 2) == 0 && player1.length > 0)
+    {
+        int idx = GetRandomValue(0, player1.length - 1);
+        spawnGreedSparkle(
+            bodies[idx].x + bodies[idx].size / 2.0f,
+            bodies[idx].y + bodies[idx].size / 2.0f,
+            (Color){ 60, 180, 255, 255 }
+        );
+    }
+}
+
+void onEndurance(void)
+{
+    // Endurance charge ticks down; while active, energy burns are halved.
+    if (!endurance_active)
+    {
+        energy_mult = 1.0f;
+        return;
+    }
+
+    enduranceTimer -= GetFrameTime();
+
+    if (enduranceTimer <= 0.0f)
+    {
+        enduranceTimer = 0.0f;
+        endurance_active = false;
+        energy_mult = 1.0f;
+        return;
+    }
+
+    energy_mult = ENDURANCE_MULT;
+
+    // Faint golden motes trail off the snake so the charge reads live
+    if (GetRandomValue(0, 2) == 0 && player1.length > 0)
+    {
+        int idx = GetRandomValue(0, player1.length - 1);
+        spawnGreedSparkle(
+            bodies[idx].x + bodies[idx].size / 2.0f,
+            bodies[idx].y + bodies[idx].size / 2.0f,
+            (Color){ 255, 230, 110, 255 }
+        );
     }
 }
 
@@ -554,8 +1125,9 @@ void updateGiantSuck(void)
         if (!foods[i].active)
             continue;
 
-        // Inhale everything edible, never poison or the haunted apple
+        // Inhale everything edible, never poison, super poison, or the haunted apple
         if (strcmp(foods[i].ability, "Poison") == 0
+            || strcmp(foods[i].ability, "SuperPoison") == 0
             || strcmp(foods[i].ability, "Ghost") == 0)
             continue;
 
@@ -691,7 +1263,7 @@ void isEatingFood(void)
 
                     PlaySound(eatSound);
                     PlaySound(energyLevel);
-                    PlaySound(mult_sound);
+                    PlaySound(greedSound);
                     multTimer += MULT_DURATION;
                     if (multTimer > MAX_BUFF_STACK)
                         multTimer = MAX_BUFF_STACK;
@@ -722,7 +1294,7 @@ void isEatingFood(void)
                 }
                 else if (strcmp(foods[i].ability, "Poison") == 0)
                 {
-                    PlaySound(hurtSound);
+                    PlaySound(poisonSound);
 
                     // Poison only ever applies ONE dose: a second apple while
                     // already poisoned won't stack another chunk on top, so
@@ -743,6 +1315,43 @@ void isEatingFood(void)
                             lostSegments = 1;
                         poisonIncr = lostSegments;
                     }
+
+                    // Hit-stop: the world freezes a beat as the poison lands.
+                    hitStopTimer = HIT_STOP_TIME;
+                    triggerScreenShake(8.0f);
+                }
+else if (strcmp(foods[i].ability, "SuperPoison") == 0)
+                {
+                    PlaySound(poisonSound);
+
+                    // Mutated poison — ONE dose only, never stackable. It
+                    // bypasses the apple of healing entirely and eats away a
+                    // quarter of the snake at a fast drainage rate.
+                    if (!superPoisoned)
+                    {
+                        superPoisonTick = 0;
+                        superPoisoned = true;
+
+                        int lostSegments = (int)(player1.length * 0.25f);
+                        if (lostSegments < 1) lostSegments = 1;
+                        if (lostSegments > player1.length - 1)
+                            lostSegments = player1.length - 1;
+                        superPoisonIncr = lostSegments;
+                    }
+
+// Vile green burst so it reads as the toxic mutation
+                    for (int s = 0; s < 50; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){ 0, 255, 0, 255 }
+                        );
+                    }
+
+                    // Hit-stop: the super-poison lands with real weight.
+                    hitStopTimer = HIT_STOP_TIME;
+                    triggerScreenShake(10.0f);
                 }
                 else if (strcmp(foods[i].ability, "Ghost") == 0)
                 {
@@ -768,13 +1377,17 @@ void isEatingFood(void)
                         PlaySound(hurtSound);
                         activateScaredMode();
                         triggerJumpscare();
+
+                        // Hit-stop: the haunt hits like a jump scare beat.
+                        hitStopTimer = HIT_STOP_TIME;
+                        triggerScreenShake(9.0f);
                     }
                 }
                 else if (strcmp(foods[i].ability, "Magnet") == 0)
                 {
                     PlaySound(eatSound);
                     PlaySound(energyLevel);
-                    PlaySound(mult_sound);
+                    PlaySound(magnetSound);
                     magnetTimer += MAGNET_DURATION;
                     if (magnetTimer > MAX_BUFF_STACK)
                         magnetTimer = MAX_BUFF_STACK;
@@ -801,7 +1414,7 @@ void isEatingFood(void)
                 else if (strcmp(foods[i].ability, "Heal") == 0)
                 {
                     PlaySound(eatSound);
-                    PlaySound(levelUpSound);
+                    PlaySound(healSound);
 
                     // Grants a clickable collectable in the effect tray
                     addEffectFrame(
@@ -825,7 +1438,7 @@ void isEatingFood(void)
                 else if (strcmp(foods[i].ability, "Ward") == 0)
                 {
                     PlaySound(eatSound);
-                    PlaySound(levelUpSound);
+                    PlaySound(wardSound);
 
                     // Grants a clickable "soulguard" in the effect tray
                     addEffectFrame(
@@ -849,8 +1462,8 @@ void isEatingFood(void)
                 else if (strcmp(foods[i].ability, "Giant") == 0)
                 {
                     PlaySound(eatSound);
-                    PlaySound(levelUpSound);
-                    PlaySound(mult_sound);
+                    PlaySound(energyLevel);
+                    PlaySound(giantSound);
 
                     giantTimer += GIANT_DURATION;
                     if (giantTimer > MAX_BUFF_STACK)
@@ -875,9 +1488,82 @@ void isEatingFood(void)
                         );
                     }
                 }
-                else if (strcmp(foods[i].ability, "Time") == 0)
+else if (strcmp(foods[i].ability, "Speed") == 0)
                 {
-                    PlaySound(levelUpSound);
+                    PlaySound(eatSound);
+                    PlaySound(energyLevel);
+                    PlaySound(speedSound);
+
+                    speedTimer += SPEED_DURATION;
+                    if (speedTimer > MAX_BUFF_STACK)
+                        speedTimer = MAX_BUFF_STACK;
+                    speed_active = true;
+                    speed_mult = SPEED_MULT;
+
+                    addEffectFrame(
+                        "Speed",
+                        (Color){255, 150, 0, 255},     // zesty orange
+                        (Color){60, 180, 255, 255},    // neon plasma blue
+                        SPEED_DURATION,
+                        false
+                    );
+
+                    // Crackling blue + orange burst on the bite
+                    for (int s = 0; s < 60; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){60, 180, 255, 255}
+                        );
+                    }
+                    for (int s = 0; s < 25; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){255, 170, 40, 255}
+                        );
+                    }
+                }
+else if (strcmp(foods[i].ability, "Endurance") == 0)
+                {
+                    PlaySound(eatSound);
+                    PlaySound(energyLevel);
+                    PlaySound(enduranceSound);
+
+                    enduranceTimer += ENDURANCE_DURATION;
+                    if (enduranceTimer > MAX_BUFF_STACK)
+                        enduranceTimer = MAX_BUFF_STACK;
+                    endurance_active = true;
+                    energy_mult = ENDURANCE_MULT;
+
+                    addEffectFrame(
+                        "Endurance",
+                        (Color){255, 225, 70, 255},     // glowing yellow
+                        (Color){255, 245, 180, 255},    // white-hot yellow
+                        ENDURANCE_DURATION,
+                        false
+                    );
+
+                    // Golden burst on the bite
+                    for (int s = 0; s < 60; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){255, 230, 90, 255}
+                        );
+                    }
+                }
+else if (strcmp(foods[i].ability, "Time") == 0)
+                {
+                    // Time ticks: sweep low -> high pitch, then fade out.
+                    SetSoundPitch(timeTickSound, 0.6f);
+                    SetSoundVolume(timeTickSound, 1.0f);
+                    PlaySound(timeTickSound);
+                    timeTickPlayTimer = 0.0f;
+                    timeTickActive = true;
 
                     // One rock of time per level: eating one makes every other
                     // rock on the board crumble away too.
@@ -889,17 +1575,16 @@ void isEatingFood(void)
                             foods[j].active = false;
                     }
 
-                    // Rewind: fly back to where the level began. While the
-                    // snake travels it glows cyan-green; landing restores the
-                    // original board (updateWarp does the restore).
-                    warpStartX = (float)player1.x;
-                    warpStartY = (float)player1.y;
-                    warpTargetX = (float)timeStartX;
-                    warpTargetY = (float)timeStartY;
-                    warp_active = true;
-                    warpTimer = 0.0f;
-                    timeTravel_active = true;
-                    timeTravelTimer = WARP_DURATION;
+                    // Equip the rock: it sits in the effect tray ready to rewind
+                    // the level when the player clicks the icon (or presses its
+                    // number key). The trip itself happens in triggerTimeAbility.
+                    addEffectFrame(
+                        "Time",
+                        (Color){40, 60, 45, 255},     // greenish radioactive stone
+                        (Color){0, 255, 0, 255},      // time-travel glow
+                        0.0f,
+                        true
+                    );
 
                     // Green sparkle burst
                     for (int s = 0; s < 60; s++)
@@ -907,8 +1592,90 @@ void isEatingFood(void)
                         spawnGreedSparkle(
                             foods[i].x + foods[i].size / 2.0f,
                             foods[i].y + foods[i].size / 2.0f,
-                            (Color){0, 255, 160, 255}
+(Color){0, 255, 160, 255}
                         );
+                    }
+                }
+                else if (strcmp(foods[i].ability, "Lucky") == 0)
+                {
+                    PlaySound(eatSound);
+                    PlaySound(energyLevel);
+                    PlaySound(luckySound);
+
+                    luckyTimer += LUCKY_DURATION;
+                    if (luckyTimer > MAX_BUFF_STACK)
+                        luckyTimer = MAX_BUFF_STACK;
+                    lucky_active = true;
+
+                    addEffectFrame(
+                        "Lucky",
+                        (Color){40, 210, 90, 255},      // emerald clover
+                        (Color){255, 220, 60, 255},     // gold fortune
+                        LUCKY_DURATION,
+                        false
+                    );
+
+                    // Golden + emerald burst on the bite
+                    for (int s = 0; s < 60; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){255, 230, 90, 255}
+                        );
+                    }
+                }
+                else if (strcmp(foods[i].ability, "Grow") == 0)
+                {
+                    PlaySound(growAbilitySound);
+
+                    // Equip the seed: it sits in the effect tray; clicking
+                    // it pops the growth instantly (see triggerGrowAbility).
+                    addEffectFrame(
+                        "Grow",
+                        (Color){60, 140, 60, 255},      // dormant seed
+                        (Color){140, 255, 160, 255},    // spring sprout
+                        0.0f,
+                        true
+                    );
+
+                    // Verdant burst on the bite
+                    for (int s = 0; s < 60; s++)
+                    {
+                        spawnGreedSparkle(
+                            foods[i].x + foods[i].size / 2.0f,
+                            foods[i].y + foods[i].size / 2.0f,
+                            (Color){120, 255, 140, 255}
+                        );
+                    }
+                }
+                else if (strcmp(foods[i].ability, "Warp") == 0)
+                {
+                    if (wardSave())
+                    {
+                        // Shielded — the warp bounces right off
+                        PlaySound(levelUpSound);
+
+                        float gx = foods[i].x + foods[i].size / 2.0f;
+                        float gy = foods[i].y + foods[i].size / 2.0f;
+
+                        for (int s = 0; s < 60; s++)
+                        {
+                            spawnGreedSparkle(
+                                gx,
+                                gy,
+                                (Color){255, 225, 110, 255}
+                            );
+                        }
+                    }
+                    else
+                    {
+                        PlaySound(hurtSound);
+                        activateReverseMode();
+
+                        // Hit-stop: the warp scrambles the brain — freeze a beat.
+                        hitStopTimer = HIT_STOP_TIME;
+                        triggerScreenShake(9.0f);
                     }
                 }
             }
@@ -919,6 +1686,29 @@ void isEatingFood(void)
     {
         loadFoods();
         level++;
+
+        // --- Level-up moment ---------------------------------------------
+        // The board is cleared: slam the new level across the screen with a
+        // cool flash, a confetti storm, and a shake so the progression lands.
+        spawnCenterBanner(
+            TextFormat("LEVEL %d", level),
+            (Color){ 190, 110, 255, 255 },    // violet level surge
+            1.4f
+        );
+        flashTimer = 0.30f;
+        flashColor = (Color){ 110, 220, 255, 255 };
+        triggerScreenShake(12.0f);
+
+        float headX = player1.x + player1.size / 2.0f;
+        float headY = player1.y;
+        for (int s = 0; s < 50; s++)
+        {
+            spawnGreedSparkle(
+                headX,
+                headY,
+                (Color){ 255, 200, 80, 255 }
+            );
+        }
     }
 }
 

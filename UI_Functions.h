@@ -116,6 +116,20 @@ void updateBars(int i)
                 (Color){255, 160, 60, (unsigned char)(150.0f * flicker)}
             );
         }
+
+        // Near-full charge: the next segment is seconds away, so the whole
+        // fill breathes a warm gold invitation to keep eating.
+        if (isNearGrowthCap())
+        {
+            float pulse = 0.35f + 0.35f * sinf(GetTime() * 18.0f);
+            DrawRectangle(
+                bars[i].x,
+                (int)(bars[i].y + bars[i].h - barHeight),
+                bars[i].w,
+                (int)barHeight,
+                (Color){255, 215, 90, (unsigned char)(150.0f * pulse)}
+            );
+        }
     }
 }
 
@@ -242,6 +256,35 @@ void updateTextLabels(int i)
                 remaining++;
         }
         snprintf(labels[i].text, sizeof(labels[i].text), "%d/%d", remaining, fruitsTotalThisLevel);
+    }
+    else if (strcmp(labels[i].name, "bestCombo") == 0)
+    {
+        snprintf(labels[i].text, sizeof(labels[i].text), "BEST x%d", bestStreak);
+
+        // New-best flash: the chip swells and flares into hot white-gold for
+        // a beat so a record streak is impossible to miss.
+        if (bestFlashTimer > 0.0f)
+        {
+            labels[i].f_size = 13;
+            labels[i].tr = 255;
+            labels[i].tg = 250;
+            labels[i].tb = 200;
+            labels[i].btmA = 190;
+            labels[i].btmR = 160;
+            labels[i].btmG = 70;
+            labels[i].btmB = 0;
+        }
+        else
+        {
+            labels[i].f_size = 10;
+            labels[i].tr = 255;
+            labels[i].tg = 220;
+            labels[i].tb = 80;
+            labels[i].btmA = 0;
+            labels[i].btmR = 0;
+            labels[i].btmG = 0;
+            labels[i].btmB = 0;
+        }
     }
 
     // Stats labels auto-grid: laid out left to right against a running cursor,
@@ -450,6 +493,14 @@ void useEffectFrame(int i)
     {
         triggerWardAbility();
     }
+    else if (strcmp(effectFrames[i].ability, "Time") == 0)
+    {
+        triggerTimeAbility();
+    }
+    else if (strcmp(effectFrames[i].ability, "Grow") == 0)
+    {
+        triggerGrowAbility();
+    }
 
     effectFrames[i].count--;
     effectFrames[i].scale = 1.8f;
@@ -496,6 +547,18 @@ void updateEffectFrames(void)
         else if (strcmp(effectFrames[i].ability, "Giant") == 0)
         {
             effectFrames[i].timer = giant_active ? giantTimer : 0.0f;
+        }
+        else if (strcmp(effectFrames[i].ability, "Speed") == 0)
+        {
+            effectFrames[i].timer = speed_active ? speedTimer : 0.0f;
+        }
+        else if (strcmp(effectFrames[i].ability, "Endurance") == 0)
+        {
+            effectFrames[i].timer = endurance_active ? enduranceTimer : 0.0f;
+        }
+        else if (strcmp(effectFrames[i].ability, "Lucky") == 0)
+        {
+            effectFrames[i].timer = lucky_active ? luckyTimer : 0.0f;
         }
         else if (!effectFrames[i].clickable)
         {
@@ -906,6 +969,40 @@ void triggerWardAbility(void)
     PlaySound(levelUpSound);
 }
 
+void triggerTimeAbility(void)
+{
+    // Rewind the level: fly the snake back to where the level began. While
+    // travelling it glows cyan-green; landing restores the original board
+    // (updateWarp does the restore) and snaps every segment back on-screen.
+    warpStartX = (float)player1.x;
+    warpStartY = (float)player1.y;
+    warpTargetX = (float)timeStartX;
+    warpTargetY = (float)timeStartY;
+    warp_active = true;
+    warpTimer = 0.0f;
+    timeTravel_active = true;
+    timeTravelTimer = WARP_DURATION;
+
+    // Rewind whoosh: start high, sweep down low, fade out.
+    SetSoundPitch(timeReverseSound, 1.8f);
+    SetSoundVolume(timeReverseSound, 1.0f);
+    PlaySound(timeReverseSound);
+    timeReversePlayTimer = 0.0f;
+    timeReverseActive = true;
+
+    float cx = player1.x + player1.size / 2.0f;
+    float cy = player1.y + player1.size / 2.0f;
+
+    for (int s = 0; s < 60; s++)
+    {
+        spawnGreedSparkle(
+            cx,
+            cy,
+            (Color){0, 255, 160, 255}
+        );
+    }
+}
+
 bool wardSave(void)
 {
     // Already shielded — this hit is absorbed
@@ -1085,6 +1182,273 @@ void spawnEnergyPopup(float energy, bool isAbility)
 
             return;
         }
+    }
+}
+
+// HSV to RGB — used to roll banners a guaranteed-vibrant random hue.
+Color hsvToColor(float h, float s, float v)
+{
+    float c = v * s;
+    float hp = fmodf(h / 60.0f, 6.0f);
+    float x = c * (1.0f - fabsf(fmodf(hp, 2.0f) - 1.0f));
+    float m = v - c;
+
+    float r, g, b;
+    if (hp < 1.0f) { r = c; g = x; b = 0.0f; }
+    else if (hp < 2.0f) { r = x; g = c; b = 0.0f; }
+    else if (hp < 3.0f) { r = 0.0f; g = c; b = x; }
+    else if (hp < 4.0f) { r = 0.0f; g = x; b = c; }
+    else if (hp < 5.0f) { r = x; g = 0.0f; b = c; }
+    else { r = c; g = 0.0f; b = x; }
+
+    return (Color){
+        (unsigned char)((r + m) * 255.0f),
+        (unsigned char)((g + m) * 255.0f),
+        (unsigned char)((b + m) * 255.0f),
+        255
+    };
+}
+
+// Punch a color further from the neutral grey centre so banners read louder
+// against the board — spreads the channels around their average.
+Color colorSaturate(Color c, float boost)
+{
+    float avg =
+        ((float)c.r + (float)c.g + (float)c.b) / 255.0f / 3.0f;
+
+    float r = ((float)c.r / 255.0f - avg) * boost + avg;
+    float g = ((float)c.g / 255.0f - avg) * boost + avg;
+    float b = ((float)c.b / 255.0f - avg) * boost + avg;
+
+    if (r < 0.0f) r = 0.0f;
+    if (g < 0.0f) g = 0.0f;
+    if (b < 0.0f) b = 0.0f;
+    if (r > 1.0f) r = 1.0f;
+    if (g > 1.0f) g = 1.0f;
+    if (b > 1.0f) b = 1.0f;
+
+    return (Color){
+        (unsigned char)(r * 255.0f),
+        (unsigned char)(g * 255.0f),
+        (unsigned char)(b * 255.0f),
+        c.a
+    };
+}
+
+// Banners render on their own dedicated overlay layer so they never collide
+// with energy popups or with each other. Rows are stacked based on how many
+// live banners already occupy the same horizontal band — a fresh message drops
+// into a free slot below instead of pasting on top of an outgoing one.
+void spawnBannerAt(const char *text, Color color, float lifetime, float y, int fsize)
+{
+    // Every banner rolls a fresh vibrant hue — full saturation, near-peak
+    // brightness — so no two toasts ever read the same. The passed color is
+    // dropped on purpose; randomness IS the flavor here.
+    (void)color;
+    float hue = (float)GetRandomValue(0, 360);
+    float sat = 0.85f + (float)GetRandomValue(0, 15) / 100.0f;
+    float val = 0.95f + (float)GetRandomValue(0, 5) / 100.0f;
+    Color vivid = hsvToColor(hue, sat, val);
+
+    // Grab a free row; if every row is busy, recycle the oldest so a cascade
+    // of toasts can't silently drop.
+    int row = -1;
+    for (int i = 0; i < MAX_BANNERS; i++)
+    {
+        if (!banners[i].visible)
+        {
+            row = i;
+            break;
+        }
+    }
+    if (row < 0)
+    {
+        int oldest = 0;
+        for (int i = 1; i < MAX_BANNERS; i++)
+        {
+            if (banners[i].lifetime > banners[oldest].lifetime)
+                oldest = i;
+        }
+        banners[oldest].visible = false;
+        row = oldest;
+    }
+
+    // Push this row below any live banner resting in the same band so the
+    // stack reads top-to-bottom instead of gluing messages together.
+    int liveBelow = 0;
+    for (int i = 0; i < MAX_BANNERS; i++)
+    {
+        if (i != row && banners[i].visible && fabsf(banners[i].y - y) < 70.0f)
+            liveBelow++;
+    }
+
+    banners[row].visible = true;
+    banners[row].name = "banner";
+    snprintf(banners[row].text, sizeof(banners[row].text), "%s", text);
+    banners[row].r = vivid.r;
+    banners[row].g = vivid.g;
+    banners[row].b = vivid.b;
+    banners[row].a = 255;
+    banners[row].f_size = fsize;
+    banners[row].layer = 100 - row;
+    banners[row].y = y + (float)liveBelow * BANNER_GAP;
+    banners[row].scale = 1.0f;
+    banners[row].lifetime = 0.0f;
+    banners[row].maxLifetime = lifetime;
+}
+
+void spawnTextBanner(const char *text, Color color, float lifetime)
+{
+    spawnBannerAt(
+        text,
+        color,
+        lifetime,
+        player1.y,
+        16
+    );
+}
+
+void spawnCenterBanner(const char *text, Color color, float lifetime)
+{
+    spawnBannerAt(
+        text,
+        color,
+        lifetime,
+        (float)SCREEN_HEIGHT / 2.0f,
+        34
+    );
+}
+
+void updateBanners(void)
+{
+    float dt = GetFrameTime();
+
+    for (int i = 0; i < MAX_BANNERS; i++)
+    {
+        if (!banners[i].visible)
+            continue;
+
+        banners[i].lifetime += dt;
+        banners[i].y -= 30.0f * dt;
+
+        if (banners[i].lifetime >= banners[i].maxLifetime)
+            banners[i].visible = false;
+    }
+}
+
+void renderBanners(void)
+{
+    for (int i = 0; i < MAX_BANNERS; i++)
+    {
+        if (!banners[i].visible)
+            continue;
+
+        float progress = banners[i].lifetime /
+                         banners[i].maxLifetime;
+
+        // Fade out during the last 35%
+        float fade = 1.0f;
+        if (progress > 0.65f)
+            fade = 1.0f - (progress - 0.65f) / 0.35f;
+        if (fade < 0.0f)
+            fade = 0.0f;
+
+        // Elastic pop-in — starts oversized, settles fast, then breathes.
+        float pop = 1.0f - banners[i].lifetime / 0.22f;
+        if (pop < 0.0f)
+            pop = 0.0f;
+        if (pop > 1.0f)
+            pop = 1.0f;
+        float heartbeat = 1.0f + 0.06f * fabsf(sinf(GetTime() * 14.0f + (float)i));
+        banners[i].scale = 1.0f + pop * 0.9f;
+        banners[i].scale *= heartbeat;
+
+        int fontSize = (int)(banners[i].f_size * banners[i].scale);
+        if (fontSize < 1)
+            fontSize = 1;
+
+        const char *text = banners[i].text;
+        int textWidth = MeasureText(text, fontSize);
+
+        float textX = (float)SCREEN_WIDTH / 2.0f - textWidth / 2.0f;
+        float textY = banners[i].y - fontSize / 2.0f;
+        float cx = textX + textWidth / 2.0f;
+        float cy = textY + fontSize / 2.0f;
+
+        // White-hot flash as it ignites
+        float flash = 1.0f - banners[i].lifetime / 0.18f;
+        if (flash < 0.0f)
+            flash = 0.0f;
+        if (flash > 1.0f)
+            flash = 1.0f;
+        float whiten = flash * 0.45f;
+
+        unsigned char fr = (unsigned char)(
+            banners[i].r + (255 - banners[i].r) * whiten);
+        unsigned char fg = (unsigned char)(
+            banners[i].g + (255 - banners[i].g) * whiten);
+        unsigned char fb = (unsigned char)(
+            banners[i].b + (255 - banners[i].b) * whiten);
+
+        // Neon glow — smooth additive radial blobs strung along the glyph
+        // band. No ghosted text copies, so the halo reads soft, not pixelated.
+        float bandY = cy;
+        float halfW = textWidth / 2.0f;
+        float glowPulse = 0.55f + 0.45f * sinf(GetTime() * 44.0f + (float)i * 3.3f);
+
+        BeginBlendMode(BLEND_ADDITIVE);
+
+        // Wide, faint outer bloom
+        float outerR = fontSize * 1.5f;
+        float step = outerR * 0.55f;
+        for (float bx = cx - halfW; bx <= cx + halfW + step; bx += step)
+        {
+            DrawCircleGradient(
+                (Vector2){ bx, bandY },
+                outerR,
+                (Color){ fr, fg, fb, (unsigned char)(30.0f * fade * glowPulse) },
+                (Color){ 0, 0, 0, 0 }
+            );
+        }
+
+        // Hot neon tube hugging the letters
+        float coreR = fontSize * 0.85f;
+        step = coreR * 0.6f;
+        for (float bx = cx - halfW; bx <= cx + halfW + step; bx += step)
+        {
+            DrawCircleGradient(
+                (Vector2){ bx, bandY },
+                coreR,
+                (Color){ fr, fg, fb, (unsigned char)(150.0f * fade) },
+                (Color){ 0, 0, 0, 0 }
+            );
+        }
+
+        // Ignition flash — a white-hot bloom on the spawn beat
+        if (whiten > 0.01f)
+        {
+            step = coreR * 0.6f;
+            for (float bx = cx - halfW; bx <= cx + halfW + step; bx += step)
+            {
+                DrawCircleGradient(
+                    (Vector2){ bx, bandY },
+                    coreR,
+                    (Color){ 255, 255, 255, (unsigned char)(130.0f * fade * whiten) },
+                    (Color){ 0, 0, 0, 0 }
+                );
+            }
+        }
+
+        EndBlendMode();
+
+        // Main text
+        DrawText(
+            text,
+            textX,
+            textY,
+            fontSize,
+            (Color){ fr, fg, fb, (unsigned char)(255.0f * fade) }
+        );
     }
 }
 

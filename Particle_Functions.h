@@ -205,6 +205,26 @@ void updateSprintEffects(void)
         player1.y + PLAYER_SIZE / 2.0f
     );
 
+    // Wind streaks kicked up behind the head along the travel direction —
+    // burst speed reads physically instead of just feeling faster.
+    float hx = player1.x + PLAYER_SIZE / 2.0f;
+    float hy = player1.y + PLAYER_SIZE / 2.0f;
+    float offX = 0.0f;
+    float offY = 0.0f;
+    if (strcmp(direction, "right") == 0)       offX = -16.0f;
+    else if (strcmp(direction, "left") == 0)   offX =  16.0f;
+    else if (strcmp(direction, "up") == 0)     offY =  16.0f;
+    else if (strcmp(direction, "down") == 0)   offY = -16.0f;
+
+    for (int s = 0; s < 2; s++)
+    {
+        spawnGreedSparkle(
+            hx + offX + (float)GetRandomValue(-3, 3),
+            hy + offY + (float)GetRandomValue(-3, 3),
+            (Color){ 235, 235, 240, 150 }
+        );
+    }
+
     // Fire rising off the top of the energy bar fill (burning energy)
     float barX = ENERGY_BAR_X;
     float barY = ENERGY_BAR_Y;

@@ -179,4 +179,23 @@ struct Bar {
 
 //UI Structures/Blueprints
 
+// Dedicated overlay banner layer. Banners live in their own small array so
+// freshly-spawned messages can be stacked into non-overlapping rows instead
+// of fighting for slots in the energy-popup pool.
+#define MAX_BANNERS 4
+#define BANNER_GAP 30
+
+struct Banner {
+    bool visible;       // Currently on screen
+    char *name;         // Slot semantics: "center", "head", "combo"
+    char text[256];     // Display string
+    int r, g, b, a;     // Color (pre-saturation-amped at spawn)
+    int f_size;         // Font size
+    int layer;          // Draw ordering
+    float y;            // Top of this row (visualY anchor)
+    float scale;
+    float lifetime;     // Seconds elapsed
+    float maxLifetime;  // Seconds until fade
+};
+
 #endif

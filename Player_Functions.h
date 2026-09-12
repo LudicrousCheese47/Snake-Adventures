@@ -3,6 +3,8 @@
 
 #include "Definitions.h"
 
+void restoreHealthyColors(void);
+
 void reverseDirection(void)
 {
     if (strcmp(direction, "right") == 0) direction = "left";
@@ -103,7 +105,7 @@ void updatePlayerLength(void) {
         player1.prevlen = player1.length;
     } else if (player1.length < 0) {
         if (wardSave()) {
-            // Saved! Claw back to 1 segment and clear the poison
+            // Saved! Claw back to 1 segment and clear every poison
             player1.length = 1;
             player1.prevlen = 0;
 
@@ -113,15 +115,21 @@ void updatePlayerLength(void) {
             poisonDebounce = false;
             poisonColorAlt = false;
 
-            player1.r = PLAYER_H_DEFAULT_R;
-            player1.g = PLAYER_H_DEFAULT_G;
-            player1.b = PLAYER_H_DEFAULT_B;
-            player1.a = PLAYER_H_DEFAULT_A;
+            superPoisoned = false;
+            superPoisonIncr = 0;
+            superPoisonTick = 0;
+            superPoisonDebounce = false;
+            superPoisonColorAlt = false;
+
+            restoreHealthyColors();
         } else {
             game = false;
         }
     }
     
+    // Count segments gained this tick so the celebration scales with the burst.
+    int grown = 0;
+
     while (player1.stomach >= 1)
     {
         // Growth gets costlier the longer the snake gets, so one board full
@@ -138,6 +146,99 @@ void updatePlayerLength(void) {
         else if (strcmp(direction, "down") == 0) createBody(3);
         PlaySound(growSound);
         player1.length++;
+        grown++;
+    }
+
+    // --- Growth celebration ----------------------------------------------
+    // Every segment gain is a reward moment: confetti, a banner, a screen
+    // shake, and a rising-pitch pop.
+    if (grown > 0)
+    {
+        float headX = player1.x + player1.size / 2.0f;
+        float headY = player1.y;
+
+        Color growGreen = (Color){ 140, 255, 90, 255 };
+
+        triggerScreenShake(5.0f + (float)grown * 2.5f);
+
+        // Multiple segments at once make the pop keep climbing in pitch.
+        int pitchSteps = grown > 6 ? 6 : grown;
+        SetSoundPitch(growSound, 0.9f + 0.05f * (float)pitchSteps);
+        PlaySound(growSound);
+
+        spawnTextBanner(
+            TextFormat("LENGTH +%d!", grown),
+            growGreen,
+            1.1f
+        );
+
+        // Confetti — sparkles plus a fat juicy splat on the board.
+        int confettiCount = 12 + grown * 4;
+        if (confettiCount > 40)
+            confettiCount = 40;
+        for (int s = 0; s < confettiCount; s++)
+        {
+            spawnGreedSparkle(headX, headY, growGreen);
+        }
+        spawnFruitSplat(headX, headY, growGreen);
+    // Every LENGTH_MILESTONE segments earned is a big deal — slam a
+        // center-screen banner and pour out a confetti storm.
+        int newLength = player1.length;
+        if (newLength % LENGTH_MILESTONE == 0)
+        {
+            spawnCenterBanner(
+                TextFormat("LENGTH %d!", newLength),
+                (Color){ 255, 170, 40, 255 },   // amber milestone
+                1.4f
+            );
+            PlaySound(levelUpSound);
+            for (int s = 0; s < 40; s++)
+            {
+                spawnGreedSparkle(
+                    SCREEN_WIDTH / 2.0f,
+                    SCREEN_HEIGHT / 2.0f,
+                    (Color){ 255, 170, 40, 255 }
+                );
+            }
+        }
+    }
+}
+
+void triggerScreenShake(float power)
+{
+    shakeTimer = 0.12f;
+    shakePower = power;
+}
+
+// True once the stomach is a healthy fraction of the way toward its next
+// growth segment — the telegraph for the near-full pulse.
+bool isNearGrowthCap(void)
+{
+    if (player1.stomach <= 0.0f)
+        return false;
+
+    int growthCap = GROWTH_BASE
+                  + (int)(GROWTH_SCALE * (float)player1.length);
+    if (growthCap <= 0)
+        return false;
+
+    return (float)player1.stomach / (float)growthCap >= NEAR_FULL_RATIO;
+}
+
+// Near-full telegraph: while growth is imminent the head sheds a slow stream
+// of warm gold motes so the player can feel the pending reward.
+void updateNearlyFullPulse(void)
+{
+    if (!isNearGrowthCap() || player1.length <= 0)
+        return;
+
+    if (GetRandomValue(0, 3) == 0)
+    {
+        spawnGreedSparkle(
+            player1.x + player1.size / 2.0f,
+            player1.y + player1.size / 2.0f,
+            (Color){ 255, 215, 90, 255 }
+        );
     }
 }
 
@@ -195,6 +296,152 @@ Color timeTravelTint(Color c)
         c.b = 0;
     }
     return c;
+}
+
+// Plasma-orange tint for the snake while the orange-of-speed charge is live —
+// solid zesty orange with a warm electric shimmer. Poison tints win by taking
+// the base color directly, so this is gated at the call sites.
+Color speedTint(Color c)
+{
+    c.r = 255;
+    c.g = 150;
+    c.b = 0;
+    return c;
+}
+
+// Deeper charred-orange for the body segments, for a glowing ember trail
+Color speedTintDark(Color c)
+{
+    c.r = 210;
+    c.g = 105;
+    c.b = 0;
+    return c;
+}
+
+// Emerald-gold tint while the lucky charge is live — reads "fortune" without
+// colliding with the zesty orange of speed. Gated like speed at the call site.
+Color luckyTint(Color c)
+{
+    c.r = 180;
+    c.g = 255;
+    c.b = 60;
+    return c;
+}
+
+Color luckyTintDark(Color c)
+{
+    c.r = 120;
+    c.g = 220;
+    c.b = 40;
+    return c;
+}
+
+// Warp-flip: glitchy magenta-cyan corpse-paint while controls are reversed.
+// High priority — the snake is "corrupted" so it wins over speed/lucky.
+Color reverseTint(Color c)
+{
+    c.r = 200;
+    c.g = 40;
+    c.b = 255;
+    return c;
+}
+
+Color reverseTintDark(Color c)
+{
+    c.r = 140;
+    c.g = 20;
+    c.b = 210;
+    return c;
+}
+
+// While the speed charge is live the snake crackles: a breathing neon-blue
+// plasma glow around the head plus lightning bolts arcing off the body.
+void renderSpeedAura(float headDrawX, float headDrawY)
+{
+    if (!speed_active || poisoned || superPoisoned)
+        return;
+
+    float hcx = headDrawX + PLAYER_SIZE / 2.0f;
+    float hcy = headDrawY + PLAYER_SIZE / 2.0f;
+    float pulse = 0.5f + 0.5f * sinf(GetTime() * 8.0f);
+
+    // Breathing plasma glow around the head
+    DrawCircleGradient(
+        (Vector2){ hcx, hcy },
+        34.0f + pulse * 10.0f,
+        (Color){ 60, 180, 255, (unsigned char)(36 + 26.0f * pulse) },
+        (Color){ 20, 90, 255, 0 }
+    );
+
+    // Crackling bolts jumping off random body segments
+    for (int b = 0; b < 2; b++)
+    {
+        if (player1.length <= 0)
+            break;
+
+        int idx = GetRandomValue(0, player1.length - 1);
+        float sx = bodies[idx].visualX + warpOffsetX() + PLAYER_SIZE / 2.0f;
+        float sy = bodies[idx].visualY + warpOffsetY() + PLAYER_SIZE / 2.0f;
+        float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+        float length = (float)GetRandomValue(14, 26) * (0.8f + 0.4f * pulse);
+        float px = sx, py = sy;
+        int spikes = 3 + GetRandomValue(-1, 1);
+
+        for (int s = 0; s <= spikes; s++)
+        {
+            float t = (float)s / spikes;
+            float nx = sx + cosf(angle) * length * t
+                     + (s == spikes ? 0.0f : (float)GetRandomValue(-8, 8));
+            float ny = sy + sinf(angle) * length * t
+                     + (s == spikes ? 0.0f : (float)GetRandomValue(-8, 8));
+            DrawLineEx(
+                (Vector2){ px, py },
+                (Vector2){ nx, ny },
+                2.0f,
+                (Color){ 130, 220, 255, (unsigned char)(170 + 85.0f * pulse) }
+            );
+            px = nx; py = ny;
+        }
+    }
+}
+
+// While the lucky charge is live the snake shimmers: a breathing emerald-gold
+// glow around the head plus orbiting coin motes off random body segments.
+void renderLuckyAura(float headDrawX, float headDrawY)
+{
+    if (!lucky_active || poisoned || superPoisoned)
+        return;
+
+    float hcx = headDrawX + PLAYER_SIZE / 2.0f;
+    float hcy = headDrawY + PLAYER_SIZE / 2.0f;
+    float pulse = 0.5f + 0.5f * sinf(GetTime() * 7.0f);
+
+    // Breathing fortune glow around the head
+    DrawCircleGradient(
+        (Vector2){ hcx, hcy },
+        30.0f + pulse * 9.0f,
+        (Color){ 255, 220, 60, (unsigned char)(32 + 24.0f * pulse) },
+        (Color){ 40, 210, 90, 0 }
+    );
+
+    // Orbiting coin motes off random body segments
+    if (player1.length > 0)
+    {
+        int idx = GetRandomValue(0, player1.length - 1);
+        float sx = bodies[idx].visualX + warpOffsetX() + PLAYER_SIZE / 2.0f;
+        float sy = bodies[idx].visualY + warpOffsetY() + PLAYER_SIZE / 2.0f;
+        for (int coin = 0; coin < 3; coin++)
+        {
+            float ang = (float)(coin * 120 + (int)(GetTime() * 180.0f)) * DEG2RAD;
+            float radius = 12.0f + pulse * 4.0f;
+            DrawCircle(
+                sx + cosf(ang) * radius,
+                sy + sinf(ang) * radius,
+                1.8f + pulse,
+                (Color){ 255, 240, 130, (unsigned char)(160 + 80.0f * pulse) }
+            );
+        }
+    }
 }
 
 // Same (0,255,0) green / black flash for the body segments mid-rewind
@@ -400,6 +647,12 @@ void renderPlayerBodies(float lerpFactor, float headDrawX, float headDrawY) {
             segColor[i] = hangryTintDark(segColor[i]);
         else if (giant_active)
             segColor[i] = giantTintDark(segColor[i]);
+        else if (reverse_active)
+            segColor[i] = reverseTintDark(segColor[i]);
+        else if (speed_active && !poisoned && !superPoisoned)
+            segColor[i] = speedTintDark(segColor[i]);
+        else if (lucky_active && !poisoned && !superPoisoned)
+            segColor[i] = luckyTintDark(segColor[i]);
     }
 
     // Giant keeps a spine underneath so the bigger chain reads continuous
@@ -561,6 +814,78 @@ void updateJumpscare(void)
         jumpscareTimer = 0.0f;
         jumpscareActive = false;
         StopSound(jumpScareSound);
+    }
+}
+
+void activateReverseMode(void)
+{
+    reverse_active = true;
+    reverseTimer = REVERSE_DURATION;
+
+    // Glitchy burst around the head so the flip is unmistakable
+    float hx = player1.x + player1.size / 2.0f;
+    float hy = player1.y + player1.size / 2.0f;
+    for (int s = 0; s < 80; s++)
+    {
+        spawnGreedSparkle(
+            hx + (float)GetRandomValue(-14, 14),
+            hy + (float)GetRandomValue(-14, 14),
+            (s % 2 == 0)
+                ? (Color){200, 40, 255, 255}   // magenta glitch
+                : (Color){80, 255, 220, 255}   // cyan glitch
+        );
+    }
+}
+
+void updateReverseMode(void)
+{
+    if (!reverse_active)
+        return;
+
+    reverseTimer -= GetFrameTime();
+
+    if (reverseTimer <= 0.0f)
+    {
+        reverseTimer = 0.0f;
+        reverse_active = false;
+        return;
+    }
+}
+
+void triggerGrowAbility(void)
+{
+    // Instant growth: sprout GROW_AMOUNT segments forward from the head,
+    // clamped to the board so the snake can never overrun MAX_P_LENGTH.
+    const int GROW_AMOUNT = 3;
+
+    int target = GROW_AMOUNT;
+    if (player1.length + target > MAX_P_LENGTH)
+        target = MAX_P_LENGTH - player1.length;
+
+    for (int n = 0; n < target; n++)
+    {
+        player1.prevlen = player1.length;
+        if (strcmp(direction, "right") == 0) createBody(0);
+        else if (strcmp(direction, "left") == 0) createBody(1);
+        else if (strcmp(direction, "up") == 0) createBody(2);
+        else if (strcmp(direction, "down") == 0) createBody(3);
+        player1.length++;
+    }
+
+    if (target > 0)
+    {
+        PlaySound(growAbilitySound);
+
+        float hx = player1.x + player1.size / 2.0f;
+        float hy = player1.y + player1.size / 2.0f;
+        for (int s = 0; s < 70; s++)
+        {
+            spawnGreedSparkle(
+                hx + (float)GetRandomValue(-16, 16),
+                hy + (float)GetRandomValue(-16, 16),
+                (Color){140, 255, 160, 255}
+            );
+        }
     }
 }
 
@@ -761,7 +1086,7 @@ void starve(void) {
     float rate = BASE_METABOLISM
                + METABOLISM_PER_SEGMENT * (float)player1.length;
 
-    player1.stomach -= rate * GetFrameTime();
+    player1.stomach -= rate * GetFrameTime() * energy_mult;
 
     if (player1.stomach < 0.0f)
         player1.stomach = 0.0f;
@@ -769,6 +1094,22 @@ void starve(void) {
 
 void triggerHealAbility(void)
 {
+    // Super poison is MUTATED — the apple of healing cannot cure it. The
+    // heal fizzles out with a sputter instead, leaving the poison running.
+    if (superPoisoned)
+    {
+        PlaySound(hurtSound);
+
+        float bx = player1.x + player1.size / 2.0f;
+        float by = player1.y;
+        for (int s = 0; s < 18; s++)
+        {
+            spawnGreedSparkle(bx, by, (Color){ 0, 255, 0, 255 });
+        }
+
+        return;
+    }
+
     // Cure poison status
     poisoned = false;
     poisonIncr = 0;
@@ -811,6 +1152,27 @@ void triggerHealAbility(void)
     PlaySound(levelUpSound);
 }
 
+// Restores the snake's healthy palette — but only when NO poison of any kind
+// is active, so one dose finishing can't wipe out a still-running tint.
+void restoreHealthyColors(void)
+{
+    if (poisoned || superPoisoned)
+        return;
+
+    player1.r = PLAYER_H_DEFAULT_R;
+    player1.g = PLAYER_H_DEFAULT_G;
+    player1.b = PLAYER_H_DEFAULT_B;
+    player1.a = PLAYER_H_DEFAULT_A;
+
+    for (int i = 0; i < MAX_P_LENGTH; i++)
+    {
+        bodies[i].r = PLAYER_B_DEFAULT_R;
+        bodies[i].g = PLAYER_B_DEFAULT_G;
+        bodies[i].b = PLAYER_B_DEFAULT_B;
+        bodies[i].a = PLAYER_B_DEFAULT_A;
+    }
+}
+
 void whilePoisoned(void) {
     // A held heal auto-fires BEFORE any damage tick lands, so healing fully
     // negates a dose instead of only stopping a single tick of it.
@@ -841,29 +1203,33 @@ void whilePoisoned(void) {
             PlaySound(hurtSound);
             score = player1.length;
 
-            if (!poisonColorAlt) {
-                poisonColorAlt = true;
-                player1.r = 0;
-                player1.g = 155;
-                player1.b = 0;
-                player1.a = 255;
-                for (int i = 0; i < MAX_P_LENGTH; i++) {
-                    bodies[i].r = 0;
-                    bodies[i].g = 255;
-                    bodies[i].b = 0;
-                    bodies[i].a = 255;
-                }
-            } else {
-                poisonColorAlt = false;
-                player1.r = 0;
-                player1.g = 95;
-                player1.b = 0;
-                player1.a = 255;
-                for (int i = 0; i < MAX_P_LENGTH; i++) {
-                    bodies[i].r = 0;
-                    bodies[i].g = 155;
-                    bodies[i].b = 0;
-                    bodies[i].a = 255;
+            // Super poison's harsher tint takes priority over standard green
+            if (!superPoisoned)
+            {
+                if (!poisonColorAlt) {
+                    poisonColorAlt = true;
+                    player1.r = 0;
+                    player1.g = 155;
+                    player1.b = 0;
+                    player1.a = 255;
+                    for (int i = 0; i < MAX_P_LENGTH; i++) {
+                        bodies[i].r = 0;
+                        bodies[i].g = 255;
+                        bodies[i].b = 0;
+                        bodies[i].a = 255;
+                    }
+                } else {
+                    poisonColorAlt = false;
+                    player1.r = 0;
+                    player1.g = 95;
+                    player1.b = 0;
+                    player1.a = 255;
+                    for (int i = 0; i < MAX_P_LENGTH; i++) {
+                        bodies[i].r = 0;
+                        bodies[i].g = 155;
+                        bodies[i].b = 0;
+                        bodies[i].a = 255;
+                    }
                 }
             }
         }
@@ -889,16 +1255,72 @@ void whilePoisoned(void) {
         poisonColorAlt = false;
         poisoned = false;
 
-        player1.r = PLAYER_H_DEFAULT_R;
-        player1.g = PLAYER_H_DEFAULT_G;
-        player1.b = PLAYER_H_DEFAULT_B;
-        player1.a = PLAYER_H_DEFAULT_A;
-        for (int i = 0; i < MAX_P_LENGTH; i++) {
-            bodies[i].r = PLAYER_B_DEFAULT_R;
-            bodies[i].g = PLAYER_B_DEFAULT_G;
-            bodies[i].b = PLAYER_B_DEFAULT_B;
-            bodies[i].a = PLAYER_B_DEFAULT_A;
+        restoreHealthyColors();
+    }
+}
+
+void whileSuperPoisoned(void) {
+    // Mutated poison drains at a FAST rate — one segment every ~8 ticks,
+    // roughly 4x as brutal as standard poison's 30-tick cadence.
+    if (superPoisoned && superPoisonIncr >= 1)
+    {
+        if (!superPoisonDebounce)
+        {
+            superPoisonDebounce = true;
+            superPoisonIncr--;
+            onPlayerEatingFood(-1, false);
+            PlaySound(hurtSound);
+            score = player1.length;
+
+            // Toxic green burns brighter than standard poison
+            if (!superPoisonColorAlt) {
+                superPoisonColorAlt = true;
+                player1.r = 0;
+                player1.g = 255;
+                player1.b = 0;
+                player1.a = 255;
+                for (int i = 0; i < MAX_P_LENGTH; i++) {
+                    bodies[i].r = 0;
+                    bodies[i].g = 255;
+                    bodies[i].b = 0;
+                    bodies[i].a = 255;
+                }
+            } else {
+                superPoisonColorAlt = false;
+                player1.r = 0;
+                player1.g = 175;
+                player1.b = 0;
+                player1.a = 255;
+                for (int i = 0; i < MAX_P_LENGTH; i++) {
+                    bodies[i].r = 0;
+                    bodies[i].g = 175;
+                    bodies[i].b = 0;
+                    bodies[i].a = 255;
+                }
+            }
         }
+        else
+        {
+            if (superPoisonTick < 8) {
+                superPoisonTick++;
+            } else {
+                superPoisonTick = 0;
+                superPoisonDebounce = false;
+            }
+        }
+        return;
+    }
+
+    // Dose fully drained — clear it. Colors only restore once NO poison is
+    // active (handled by restoreHealthyColors).
+    if (superPoisonIncr <= 0)
+    {
+        superPoisonTick = 0;
+        superPoisonDebounce = false;
+        superPoisonColorAlt = false;
+        superPoisoned = false;
+
+        restoreHealthyColors();
     }
 }
 

@@ -63,6 +63,7 @@ extern struct Player bodies[MAX_P_LENGTH];
 extern struct Particle particles[MAX_PARTICLES];
 extern struct Splat splats[MAX_SPLATS];
 extern struct TextLabel tempLabels[MAX_UI];
+extern struct Banner banners[MAX_BANNERS];
 extern struct EffectFrame effectFrames[MAX_EFFECT_FRAMES];
 extern struct Food timeSnapshot[FRUIT_COUNT];
 
@@ -86,6 +87,16 @@ extern bool mult_active;
 extern bool sprint_active;
 extern float magnetTimer;
 extern bool magnet_active;
+extern float speedTimer;
+extern bool speed_active;
+extern float speed_mult;
+extern float enduranceTimer;
+extern bool endurance_active;
+extern float energy_mult;
+extern float luckyTimer;
+extern bool lucky_active;
+extern float reverseTimer;
+extern bool reverse_active;
 extern float holyTimer;
 extern bool holy_active;
 extern float wardTimer;
@@ -100,10 +111,31 @@ extern bool giant_active;
 extern float giantTimer;
 extern Color boardColor;
 extern Color boardColorDark;
+extern int eatStreak;
+extern float shakeTimer;
+extern float shakePower;
+extern int bestStreak;
+extern float flashTimer;
+extern Color flashColor;
+extern float bestFlashTimer;
+extern float hitStopTimer;
+extern float deathTimer;
+extern float timeTickPlayTimer;
+extern bool timeTickActive;
+extern float timeReversePlayTimer;
+extern bool timeReverseActive;
+extern bool deathTriggered;
+extern signed char seenAbility[POWER_UP_COUNT];
 #define MAGNET_DURATION 8.0f
-// Timed ability buffs stack up to this many seconds of total active time;
-// further pickups while already stacked just refresh back toward the cap.
+#define SPEED_DURATION 8.0f
+#define SPEED_MULT 1.5f
+// Timer buffs stack up to this many seconds of total active time; further
+// pickups while already stacked just refresh back toward the cap.
 #define MAX_BUFF_STACK 12.0f
+// Lucky charge: while active, each fruit eaten has a LUCKY_CHANCE chance to
+// grant DOUBLE energy (an extra identical deposit on top of the normal one).
+#define LUCKY_DURATION 10.0f
+#define LUCKY_CHANCE 0.5f
 #define HOLY_DURATION 6.0f
 #define MAGNET_RADIUS 150.0f
 #define MAGNET_SPEED 120.0f
@@ -123,8 +155,25 @@ int gridColor1 = 0x0000FFFF;
 int gridColor2 = 0x000088FF;
 char *direction = "right";
 float rotation = 0.0f;
-bool game = true;
+bool game = false;
+bool titleScreen = true;
+bool testMode = false;
 int score = 0;
+int eatStreak = 0;
+float shakeTimer = 0.0f;
+float shakePower = 0.0f;
+int bestStreak = 0;
+float flashTimer = 0.0f;
+Color flashColor = { 0, 0, 0, 0 };
+float bestFlashTimer = 0.0f;
+float hitStopTimer = 0.0f;
+float deathTimer = 0.0f;
+float timeTickPlayTimer = 0.0f;
+bool timeTickActive = false;
+float timeReversePlayTimer = 0.0f;
+bool timeReverseActive = false;
+bool deathTriggered = false;
+signed char seenAbility[POWER_UP_COUNT] = { 0 };
 float foodTick = 0;
 float tickIncr = 0.005;
 int poisonIncr = 0;
@@ -132,6 +181,11 @@ int poisonTick = 0;
 int poisonColorAlt = false;
 bool poisoned = false;
 bool poisonDebounce = false; 
+int superPoisonIncr = 0;
+int superPoisonTick = 0;
+int superPoisonColorAlt = false;
+bool superPoisoned = false;
+bool superPoisonDebounce = false;
 int minStomachCap = 10;
 
 // --- Balance tuning -------------------------------------------------------
@@ -140,11 +194,29 @@ int minStomachCap = 10;
 // Extra hunger burn per snake segment (bigger snake = hungrier).
 #define METABOLISM_PER_SEGMENT 0.02f
 // Cost of holding left-shift to sprint (energy per second).
-#define SPRINT_BURN 2.0f
+#define SPRINT_BURN 2.5f
+// Banana of endurance: while active, movement/sprint hunger burns drop to
+// this fraction of normal (0.5 = 50% less energy consumed).
+#define ENDURANCE_DURATION 8.0f
+#define ENDURANCE_MULT 0.5f
 // Energy required to grow one segment: base + a slowly increasing tax so
 // runaway growth flattens instead of snowballing.
-#define GROWTH_BASE 10
-#define GROWTH_SCALE 0.12f
+#define GROWTH_BASE 8
+#define GROWTH_SCALE 0.10f
+// Eat-streak combo: every COMBO_EVERY fruits eaten in a row without a bad
+// fruit grants a bonus splash of COMBO_BONUS energy plus a celebratory banner.
+#define COMBO_EVERY 5
+#define COMBO_BONUS 2.0f
+// Near-full charge: once the stomach is this fraction of the way to its next
+// growth cap, the energy bar and snake telegraph that growth is imminent.
+#define NEAR_FULL_RATIO 0.8f
+// Every LENGTH_MILESTONE segments earned fires a big center-screen banner.
+#define LENGTH_MILESTONE 10
+// Hazard hit-stop: eating poison/warp/ghost freezes the world for this many
+// seconds while a red danger flash burns in.
+#define HIT_STOP_TIME 0.12f
+// Best-combo chip flashes gold for this long when a new record lands.
+#define BEST_FLASH_TIME 0.8f
 int level = 1;
 float food_mult = 1.0f;
 int fruitsTotalThisLevel = 0;
@@ -185,8 +257,19 @@ float warpTargetY = 0.0f;
 float warpTimer = 0.0f;
 bool giant_active = false;
 float giantTimer = 0.0f;
+float speedTimer = 0.0f;
+bool speed_active = false;
+float speed_mult = 1.0f;
+float enduranceTimer = 0.0f;
+bool endurance_active = false;
+float energy_mult = 1.0f;
+float luckyTimer = 0.0f;
+bool lucky_active = false;
+float reverseTimer = 0.0f;
+bool reverse_active = false;
 #define HOLY_DURATION 6.0f
 #define WARD_SHIELD_DURATION 6.0f
+#define REVERSE_DURATION 4.0f   // warp melon: how long controls stay flipped
 int eyeTargetFruit = -1;
 bool scared = false;
 float scaredTimer = 0.0f;
@@ -231,10 +314,35 @@ Sound UI_Hover_Sfx;
 Sound mult_sound;
 Music backgroundSound;
 
+extern bool titleScreen;
+extern bool testMode;
+
+// Ability-specific SFX (Assets/*.wav — wired per pickup branch)
+Sound speedSound;
+Sound healSound;
+Sound magnetSound;
+Sound wardSound;
+Sound giantSound;
+Sound luckySound;
+Sound enduranceSound;
+Sound growAbilitySound;
+Sound combo_Sound;
+Sound poisonSound;
+Sound greedSound;
+Sound timeTickSound;
+Sound timeReverseSound;
+
 // Predefine Functions
 
 void spawnEnergyPopup(float energy, bool isAbility);
 void updatePlayerLength(void);
+void spawnTextBanner(const char *text, Color color, float lifetime);
+void triggerScreenShake(float power);
+void spawnCenterBanner(const char *text, Color color, float lifetime);
+void updateBanners(void);
+void renderBanners(void);
+bool isNearGrowthCap(void);
+void updateNearlyFullPulse(void);
 
 int addEffectFrame(char *ability, Color fruitColor, Color accentColor, float duration, bool clickable);
 void updateEffectFrames(void);
@@ -250,6 +358,14 @@ void updateGreedAura(void);
 void updateEnergyBarSparkles(void);
 void onMultiplier(void);
 void onMagnet(void);
+void onSpeed(void);
+void renderSpeedAura(float headX, float headY);
+void onEndurance(void);
+void onLucky(void);
+void renderLuckyAura(float headX, float headY);
+void triggerGrowAbility(void);
+void activateReverseMode(void);
+void updateReverseMode(void);
 void updateMagnetEffects(void);
 void triggerHealAbility(void);
 void updateHealAura(void);
@@ -261,6 +377,7 @@ void updateWardShield(void);
 void renderWardShield(float headX, float headY);
 void updateWardAura(void);
 void triggerWardAbility(void);
+void triggerTimeAbility(void);
 bool wardSave(void);
 void reverseDirection(void);
 void clampPlayerToBoard(void);
@@ -280,6 +397,7 @@ void triggerJumpscare(void);
 
 void isTouchingEdge(void); //Ends game if player touches edge
 void loadFoods(void); //Handles loading the food on a grid
+void loadTestBoard(void); //Test-mode board: one fruit of every ability
 void renderFoods(void); //Renders the loaded foods
 bool isEatingObj(int x1, int x2, int y1, int y2, int l1, int l2, int w1, int w2); //Fires successfully when player is touching any object
 void createBody(int directionMode); //Handles the creation of the players body segments
@@ -304,9 +422,10 @@ void spawnFruitSplat(float x, float y, Color color);
 void renderSplats(void);
 void activateScaredMode(void);
 void updateScaredMode(void);
+void whilePoisoned(void);
+void whileSuperPoisoned(void);
 void triggerJumpscare(void);
 void updateJumpscare(void);
-void whilePoisoned(void);
 void updateBodyRipple(void);
 void renderEye(float headDrawX, float headDrawY);
 
